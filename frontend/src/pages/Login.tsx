@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Shield, ScanSearch, GitPullRequestArrow, Bot, AlertTriangle } from 'lucide-react';
+import { Shield, ScanSearch, Bot, AlertTriangle } from 'lucide-react';
 
 /**
  * Фирменный значок GitHub (Octocat mark).
@@ -45,90 +45,96 @@ const Login = () => {
 
   return (
     <div className="login-screen">
+      {/* Decorative background elements */}
+      <div className="login-bg-lines"></div>
+      
       <div className="login-grid">
         {/* Left: what the product does */}
         <section className="login-pitch">
           <div className="login-brand">
-            <div className="login-brand-mark">
-              <Shield size={26} strokeWidth={2.2} />
-            </div>
-            <div>
-              <div className="login-brand-name">KMG AI</div>
-              <div className="login-brand-sub">Security Agent</div>
+            <div className="login-brand-text">
+              <div className="login-brand-name">KMG</div>
+              <div className="login-brand-sub">DIGITAL</div>
             </div>
           </div>
 
           <h1 className="login-title">
-            Уязвимости — <span className="login-title-accent">до</span> того,
-            <br />как они попадут в репозиторий
+            Безопасность кода —<br />
+            до того, как он попадёт<br />
+            в репозиторий
           </h1>
 
           <p className="login-lead">
-            Платформа проверяет код на этапе <code>git push</code> и блокирует отправку,
-            если найдены критические проблемы. Проверка выполняется до того, как код уйдёт в GitHub.
+            Проверяем изменения на уязвимости и потенциальные риски до публикации кода, помогая командам находить проблемы на раннем этапе разработки.
           </p>
 
           <ul className="login-features">
             <li>
-              <span className="login-feature-icon"><ScanSearch size={18} /></span>
+              <span className="login-feature-icon"><ScanSearch size={18} strokeWidth={1.5} /></span>
               <div>
                 <strong>Реальные сканеры</strong>
-                <span className="login-feature-text">Semgrep, Gitleaks и Trivy — поиск уязвимостей, секретов и уязвимых зависимостей</span>
+                <span className="login-feature-text">Semgrep, Gitleaks и Trivy для поиска уязвимостей, секретов и проблемных зависимостей.</span>
               </div>
             </li>
             <li>
-              <span className="login-feature-icon"><GitPullRequestArrow size={18} /></span>
+              <span className="login-feature-icon"><Shield size={18} strokeWidth={1.5} /></span>
               <div>
-                <strong>Защита перед push</strong>
-                <span className="login-feature-text">Git-хук прерывает отправку и показывает файл, строку и severity</span>
+                <strong>Контроль push</strong>
+                <span className="login-feature-text">Проверка изменений до отправки кода и блокировка публикации при обнаружении критических проблем.</span>
               </div>
             </li>
             <li>
-              <span className="login-feature-icon"><Bot size={18} /></span>
+              <span className="login-feature-icon"><Bot size={18} strokeWidth={1.5} /></span>
               <div>
-                <strong>AI-разбор находок</strong>
-                <span className="login-feature-text">Агент исследует код и объясняет, чем именно опасна каждая находка</span>
+                <strong>AI-анализ</strong>
+                <span className="login-feature-text">Дополнительный анализ результатов и оценка серьёзности найденных проблем.</span>
               </div>
             </li>
           </ul>
         </section>
 
         {/* Right: the actual sign-in */}
-        <section className="login-card">
-          <h2 className="login-card-title">Вход в систему</h2>
-          <p className="login-card-sub">
-            Авторизуйтесь через GitHub, чтобы подключить репозитории и запускать проверки.
-          </p>
+        <section className="login-card-container">
+          <div className="login-card">
+            <h2 className="login-card-title">Вход в систему</h2>
+            <p className="login-card-sub">
+              Авторизуйтесь через GitHub, чтобы подключить<br />репозитории и запустить проверки.
+            </p>
 
-          {error && (
-            <div className="login-error" role="alert">
-              <AlertTriangle size={18} />
-              <span>{error}</span>
+            {error && (
+              <div className="login-error" role="alert">
+                <AlertTriangle size={18} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button
+              onClick={handleLogin}
+              disabled={signingIn}
+              className="login-github-btn"
+            >
+              <GithubMark size={18} />
+              {signingIn ? 'Переход...' : 'Войти через GitHub'}
+              <span className="login-btn-arrow">→</span>
+            </button>
+            
+            <div className="login-divider">
+              <span>или</span>
             </div>
-          )}
 
-          <button
-            onClick={handleLogin}
-            disabled={signingIn}
-            className="login-github-btn"
-          >
-            <GithubMark size={20} />
-            {signingIn ? 'Переходим в GitHub...' : 'Войти через GitHub'}
-          </button>
+            <div className="login-scopes">
+              <div className="login-scopes-title">КАКИЕ ДОСТУПНЫЕ ЗАПРОСЫ ЗАПРАШИВАЮТСЯ</div>
+              <ul>
+                <li><code>repo</code> чтение кода репозиториев для сканирования</li>
+                <li><code>user:email</code> адрес службы для вашей учетной записи</li>
+                <li><code>read:org</code> список репозиториев организаций</li>
+              </ul>
+            </div>
 
-          <div className="login-scopes">
-            <div className="login-scopes-title">Какие доступы запрашиваются</div>
-            <ul>
-              <li><code>repo</code> — чтение кода репозиториев для сканирования</li>
-              <li><code>user:email</code> — адрес почты для вашей учётной записи</li>
-              <li><code>read:org</code> — список репозиториев организаций</li>
-            </ul>
+            <p className="login-note">
+              Token доступа хранится в зашифрованном виде и<br />отзывается на стороне GitHub при выходе из аккаунта.
+            </p>
           </div>
-
-          <p className="login-note">
-            Токен доступа хранится в зашифрованном виде и отзывается на стороне GitHub
-            при выходе из аккаунта.
-          </p>
         </section>
       </div>
     </div>
