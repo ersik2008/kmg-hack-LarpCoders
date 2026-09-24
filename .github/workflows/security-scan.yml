@@ -179,6 +179,15 @@ jobs:
           fi
           echo "Все сканеры завершены, критических находок нет. exit 0"
 
+      # ТЗ п. 4.6.1: формируем Markdown-представление отчёта для чтения специалистом.
+      # Выполняется if: always() — отчёт нужен независимо от исхода проверки.
+      - name: Generate Markdown report
+        if: always()
+        run: |
+          python3 tools/generate_md_report.py scan_results.json kmg-self-scan-report.md
+          echo "=== Markdown report preview (first 40 lines) ==="
+          head -40 kmg-self-scan-report.md || true
+
       # ----- Frontend -----
       - name: Install frontend dependencies
         working-directory: frontend
@@ -188,13 +197,37 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      # ----- Upload Artifacts -----
-      - name: Upload scan results
+      # ТЗ п. 4.3.4: Отчёт Агента сохраняется как артефакт и доступен после
+      # завершения пайплайна вне зависимости от его результата (if: always()).
+      #
+      # Артефакт «security-scan-results»:
+      #   scan_results.json       — сырой ответ security engine (JSON)
+      #   kmg-self-scan-report.md — Markdown-отчёт по self-scan (ТЗ п. 4.6.1)
+      - name: Upload self-scan report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-scan-results
-          path: scan_results.json
+          path: |
+            scan_results.json
+            kmg-self-scan-report.md
+          if-no-files-found: warn
+
+      # Артефакт «kmg-security-report» — полный отчёт Агента (ТЗ п. 4.6.1, 4.6.3):
+      #   kmg-scan-report.json — machine-readable JSON с ИБ-01…ИБ-08
+      #   kmg-report.md        — Markdown для специалиста с ИБ-01…ИБ-08
+      #   kmg-results.sarif    — SARIF 2.1.0 для GitHub Code Scanning
+      # Файлы создаются шагом «Enforce KMG AI security policy» (action.yml).
+      - name: Upload KMG agent report
+        if: always() && hashFiles('kmg-scan-report.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: kmg-security-report
+          path: |
+            kmg-scan-report.json
+            kmg-report.md
+            kmg-results.sarif
+          if-no-files-found: warn
 
       - name: Comment PR with results
         if: github.event_name == 'pull_request'
