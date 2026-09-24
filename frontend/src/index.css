@@ -1082,20 +1082,20 @@ h2 { font-size: 1.5rem; margin-bottom: 0.75rem; }
 }
 
 .sidebar-logo-name {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.45rem;
+  font-weight: 800;
   color: #F1F4F8;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.06em;
   line-height: 1;
 }
 
 .sidebar-logo-sub {
-  font-size: 0.6rem;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  color: #60738C;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  color: #818cf8;
   line-height: 1;
-  margin-top: 3px;
+  margin-top: 4px;
 }
 
 .sidebar-nav {
