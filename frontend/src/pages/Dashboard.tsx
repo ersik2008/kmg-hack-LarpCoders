@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, ShieldCheck, ShieldAlert, AlertTriangle, ArrowRight, RefreshCw } from 'lucide-react';
+import { Activity, ShieldCheck, ShieldAlert, AlertTriangle, ArrowRight, RefreshCw, GitBranch } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface DashboardStats {
@@ -59,77 +59,81 @@ const Dashboard = () => {
   }, []);
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 700, margin: 0 }}>Обзор</h1>
-          <p style={{ color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            Обзор состояния безопасности и сканирований организации
-          </p>
+    <div className="dashboard">
+      {/* Page header */}
+      <div className="dashboard-header">
+        <div className="dashboard-header-title">
+          <h1>Обзор</h1>
+          <p>Обзор состояния безопасности и сканирований организации</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button onClick={fetchStats} className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <RefreshCw size={16} /> Обновить
+        <div className="dashboard-header-actions">
+          <button onClick={fetchStats} className="ds-btn ds-btn-secondary">
+            <RefreshCw size={15} strokeWidth={1.5} />
+            Обновить
           </button>
-          <button onClick={() => navigate('/repositories')} className="btn btn-primary">
+          <button onClick={() => navigate('/repositories')} className="ds-btn ds-btn-primary">
             Сканировать репозиторий
           </button>
         </div>
       </div>
 
       {loading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-          Загрузка данных дашборда...
-        </div>
+        <div className="dashboard-loading">Загрузка данных...</div>
       ) : error ? (
-        <div className="card" style={{ border: '1px solid var(--danger)', color: 'var(--danger)', marginBottom: '2rem' }}>
+        <div className="ds-card dashboard-error">
           Не удалось загрузить данные: {error}
         </div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-            <StatCard 
-              title="Репозиториев" 
-              value={stats?.repositories ?? 0} 
-              icon={<Activity size={24} color="var(--primary)" />} 
+          {/* Metric cards */}
+          <div className="stat-grid">
+            <StatCard
+              title="Репозиториев"
+              value={stats?.repositories ?? 0}
+              icon={<Activity size={18} strokeWidth={1.5} />}
+              variant="neutral"
             />
-            <StatCard 
-              title="Всего сканирований" 
-              value={stats?.totalScans ?? 0} 
-              icon={<ShieldCheck size={24} color="var(--accent)" />} 
+            <StatCard
+              title="Всего сканирований"
+              value={stats?.totalScans ?? 0}
+              icon={<ShieldCheck size={18} strokeWidth={1.5} />}
               subtitle={`${stats?.passScans ?? 0} успешно (PASS)`}
+              variant="success"
             />
-            <StatCard 
-              title="Критические риски" 
-              value={stats?.criticalCount ?? 0} 
-              icon={<ShieldAlert size={24} color="var(--danger)" />} 
-              isAlert={Boolean(stats?.criticalCount && stats.criticalCount > 0)}
+            <StatCard
+              title="Критические риски"
+              value={stats?.criticalCount ?? 0}
+              icon={<ShieldAlert size={18} strokeWidth={1.5} />}
+              variant="critical"
             />
-            <StatCard 
-              title="Высокие риски" 
-              value={stats?.highCount ?? 0} 
-              icon={<AlertTriangle size={24} color="var(--warning)" />} 
+            <StatCard
+              title="Высокие риски"
+              value={stats?.highCount ?? 0}
+              icon={<AlertTriangle size={18} strokeWidth={1.5} />}
+              variant="high"
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
-            <div className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                <h3 style={{ margin: 0 }}>Недавние сканирования</h3>
-                <button onClick={() => navigate('/repositories')} className="btn btn-outline" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
-                  Все репозитории <ArrowRight size={14} style={{ marginLeft: '4px' }} />
+          {/* Main content grid */}
+          <div className="dashboard-grid">
+            {/* Recent scans */}
+            <div className="ds-card">
+              <div className="ds-card-header">
+                <h3 className="ds-card-title">Недавние сканирования</h3>
+                <button onClick={() => navigate('/repositories')} className="ds-link-btn">
+                  Все репозитории <ArrowRight size={14} />
                 </button>
               </div>
 
               {(!stats?.recentScans || stats.recentScans.length === 0) ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                <div className="dashboard-empty">
                   <p>Сканирований пока не было.</p>
-                  <button onClick={() => navigate('/repositories')} className="btn btn-primary" style={{ marginTop: '0.75rem' }}>
+                  <button onClick={() => navigate('/repositories')} className="ds-btn ds-btn-primary" style={{ marginTop: '0.75rem' }}>
                     Запустить первое сканирование
                   </button>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div className="scan-list">
                   {stats.recentScans.map((scan) => (
                     <ScanRow key={scan.id} scan={scan} onSelect={() => navigate(`/scans/${scan.id}`)} />
                   ))}
@@ -137,20 +141,21 @@ const Dashboard = () => {
               )}
             </div>
 
-            <div className="card">
-              <h3 style={{ marginBottom: '1.25rem' }}>Статистика уязвимостей</h3>
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <VulnStatRow label="Критические" count={stats?.criticalCount ?? 0} badgeClass="badge-critical" />
-                <VulnStatRow label="Высокие" count={stats?.highCount ?? 0} badgeClass="badge-high" />
-                <VulnStatRow label="Средние" count={stats?.mediumCount ?? 0} badgeClass="badge-medium" />
-                <VulnStatRow label="Низкие" count={stats?.lowCount ?? 0} badgeClass="badge" />
+            {/* Vulnerability stats */}
+            <div className="ds-card">
+              <div className="ds-card-header">
+                <h3 className="ds-card-title">Статистика уязвимостей</h3>
+              </div>
+              <ul className="vuln-list">
+                <VulnStatRow label="Критические" count={stats?.criticalCount ?? 0} variant="critical" />
+                <VulnStatRow label="Высокие" count={stats?.highCount ?? 0} variant="high" />
+                <VulnStatRow label="Средние" count={stats?.mediumCount ?? 0} variant="medium" />
+                <VulnStatRow label="Низкие" count={stats?.lowCount ?? 0} variant="low" />
               </ul>
 
-              <div style={{ marginTop: '2rem', padding: '1rem', background: 'var(--bg-dark)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Всего найдено уязвимостей</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 700, color: 'white', marginTop: '0.25rem' }}>
-                  {stats?.totalFindings ?? 0}
-                </div>
+              <div className="vuln-total">
+                <div className="vuln-total-label">Всего найдено уязвимостей</div>
+                <div className="vuln-total-value">{stats?.totalFindings ?? 0}</div>
               </div>
             </div>
           </div>
@@ -160,70 +165,62 @@ const Dashboard = () => {
   );
 };
 
-const StatCard = ({ title, value, icon, subtitle, isAlert }: any) => (
-  <div 
-    className="card" 
-    style={{ 
-      display: 'flex', 
-      alignItems: 'center', 
-      gap: '1.25rem',
-      borderColor: isAlert ? 'rgba(239, 68, 68, 0.4)' : undefined,
-    }}
-  >
-    <div style={{ background: 'var(--bg-dark)', padding: '0.9rem', borderRadius: 'var(--radius-md)', display: 'flex' }}>
+const StatCard = ({ title, value, icon, subtitle, variant }: {
+  title: string;
+  value: number;
+  icon: React.ReactNode;
+  subtitle?: string;
+  variant: 'neutral' | 'success' | 'critical' | 'high';
+}) => (
+  <div className={`stat-card stat-card--${variant}`}>
+    <div className={`stat-card-icon stat-card-icon--${variant}`}>
       {icon}
     </div>
-    <div>
-      <h3 style={{ fontSize: '1.8rem', fontWeight: 700, margin: 0, lineHeight: 1.1 }}>{value}</h3>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.2rem', marginBottom: 0 }}>{title}</p>
-      {subtitle && <span style={{ fontSize: '0.75rem', color: 'var(--accent)' }}>{subtitle}</span>}
+    <div className="stat-card-body">
+      <div className="stat-card-value">{value}</div>
+      <div className="stat-card-title">{title}</div>
+      {subtitle && <div className="stat-card-subtitle">{subtitle}</div>}
     </div>
   </div>
 );
 
-const VulnStatRow = ({ label, count, badgeClass }: { label: string; count: number; badgeClass: string }) => (
-  <li style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-    <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{label}</span>
-    <span className={`badge ${badgeClass}`}>{count}</span>
+const VulnStatRow = ({ label, count, variant }: { label: string; count: number; variant: 'critical' | 'high' | 'medium' | 'low' }) => (
+  <li className="vuln-row">
+    <div className="vuln-row-left">
+      <span className={`vuln-dot vuln-dot--${variant}`}></span>
+      <span className="vuln-row-label">{label}</span>
+    </div>
+    <span className="vuln-row-count">{count}</span>
   </li>
 );
 
 const ScanRow = ({ scan, onSelect }: { scan: any; onSelect: () => void }) => {
   const repoName = scan.repository?.name || 'Repository';
-  const time = new Date(scan.createdAt).toLocaleString();
+  const time = new Date(scan.createdAt).toLocaleString('ru-RU');
   const status = scan.status;
   const policy = scan.policyResult;
 
   return (
-    <div 
-      onClick={onSelect}
-      style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        padding: '0.9rem 1rem', 
-        background: 'var(--bg-dark)', 
-        borderRadius: 'var(--radius-sm)',
-        cursor: 'pointer',
-        border: '1px solid transparent',
-        transition: 'border-color 0.2s',
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--border-color)')}
-      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'transparent')}
-    >
-      <div>
-        <h4 style={{ margin: 0, fontSize: '0.95rem' }}>{repoName}</h4>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{time}</span>
+    <div className="scan-row" onClick={onSelect}>
+      <div className="scan-row-icon">
+        <GitBranch size={16} strokeWidth={1.5} />
       </div>
-      <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+      <div className="scan-row-info">
+        <div className="scan-row-name">{repoName}</div>
+        <div className="scan-row-time">{time}</div>
+      </div>
+      <div className="scan-row-badges">
         {policy && (
-          <span className={`badge ${policy === 'PASS' ? 'badge-accent' : policy === 'BLOCK' ? 'badge-critical' : 'badge-warning'}`}>
+          <span className={`ds-badge ds-badge--${policy === 'PASS' ? 'success' : policy === 'BLOCK' ? 'danger' : 'warning'}`}>
             {policy}
           </span>
         )}
-        <span className={`badge ${status === 'COMPLETED' ? 'badge-medium' : status === 'FAILED' ? 'badge-critical' : 'badge-warning'}`}>
+        <span className={`ds-badge ds-badge--${status === 'COMPLETED' ? 'neutral' : status === 'FAILED' ? 'danger' : 'warning'}`}>
           {status}
         </span>
+      </div>
+      <div className="scan-row-arrow">
+        <ArrowRight size={14} />
       </div>
     </div>
   );

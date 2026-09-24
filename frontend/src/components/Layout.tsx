@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FolderGit2, ShieldAlert, Settings, LogOut, Shield, GitFork, User as UserIcon } from 'lucide-react';
+import { LayoutDashboard, FolderGit2, ShieldAlert, Settings, LogOut, GitFork, User as UserIcon } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
 
 interface UserProfile {
@@ -89,72 +89,56 @@ const Layout = () => {
 
   return (
     <div className="app-container">
-      <aside style={{
-        width: '260px',
-        backgroundColor: 'var(--bg-surface)',
-        borderRight: '1px solid var(--border-color)',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '1.5rem 1rem'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2.5rem', padding: '0 0.5rem' }}>
-          <div style={{
-            background: 'linear-gradient(135deg, var(--primary), #4f46e5)',
-            width: '40px', height: '40px', borderRadius: '10px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 15px var(--primary-glow)'
-          }}>
-            <Shield color="white" size={24} />
-          </div>
-          <div>
-            <h2 style={{ fontSize: '1.25rem', margin: 0, fontWeight: 700, letterSpacing: '0.05em' }}>KMG AI</h2>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Security Agent</span>
+      <aside className="sidebar">
+        {/* Logo */}
+        <div className="sidebar-logo">
+          <img src="/favicon.svg" alt="KMG Digital" className="sidebar-logo-icon" />
+          <div className="sidebar-logo-text">
+            <span className="sidebar-logo-name">KMG</span>
+            <span className="sidebar-logo-sub">DIGITAL</span>
           </div>
         </div>
 
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
-          <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Обзор" />
-          <NavItem to="/repositories" icon={<FolderGit2 size={20} />} label="Репозитории" />
-          <NavItem to="/attack-paths" icon={<GitFork size={20} />} label="Цепочки атак" />
-          <NavItem to="/findings" icon={<ShieldAlert size={20} />} label="Все уязвимости" />
-          <NavItem to="/settings" icon={<Settings size={20} />} label="Настройки" />
+        {/* Navigation */}
+        <nav className="sidebar-nav">
+          <NavItem to="/dashboard" icon={<LayoutDashboard size={18} strokeWidth={1.5} />} label="Обзор" />
+          <NavItem to="/repositories" icon={<FolderGit2 size={18} strokeWidth={1.5} />} label="Репозитории" />
+          <NavItem to="/attack-paths" icon={<GitFork size={18} strokeWidth={1.5} />} label="Цепочки атак" />
+          <NavItem to="/findings" icon={<ShieldAlert size={18} strokeWidth={1.5} />} label="Все уязвимости" />
+          <NavItem to="/settings" icon={<Settings size={18} strokeWidth={1.5} />} label="Настройки" />
         </nav>
 
         {/* User Profile & Logout */}
-        <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem' }}>
+        <div className="sidebar-footer">
+          <div className="sidebar-user">
             {avatar ? (
-              <img 
-                src={avatar} 
-                alt={displayName} 
-                style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)' }} 
+              <img
+                src={avatar}
+                alt={displayName}
+                className="sidebar-avatar"
               />
             ) : (
-              <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)' }}>
-                <UserIcon size={18} color="var(--text-muted)" />
+              <div className="sidebar-avatar-placeholder">
+                <UserIcon size={16} />
               </div>
             )}
-            <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'white', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                {displayName}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                {displayLogin}
-              </div>
+            <div className="sidebar-user-info">
+              <div className="sidebar-user-name">{displayName}</div>
+              <div className="sidebar-user-login">{displayLogin}</div>
             </div>
           </div>
 
-          <button 
-            onClick={() => setConfirmLogout(true)} 
+          <button
+            onClick={() => setConfirmLogout(true)}
             disabled={loggingOut}
-            className="btn btn-outline" 
-            style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--danger)', border: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '0.85rem', opacity: loggingOut ? 0.6 : 1 }}
+            className="sidebar-logout-btn"
           >
-            <LogOut size={16} style={{ marginRight: '0.5rem' }} /> {loggingOut ? 'Выход...' : 'Выйти'}
+            <LogOut size={15} strokeWidth={1.5} />
+            {loggingOut ? 'Выход...' : 'Выйти'}
           </button>
         </div>
       </aside>
-      
+
       <main className="main-content animate-in">
         <Outlet />
       </main>
@@ -181,23 +165,11 @@ const Layout = () => {
 
 const NavItem = ({ to, icon, label }: { to: string, icon: React.ReactNode, label: string }) => {
   return (
-    <NavLink 
-      to={to} 
-      style={({ isActive }) => ({
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.75rem',
-        padding: '0.75rem 1rem',
-        borderRadius: 'var(--radius-sm)',
-        textDecoration: 'none',
-        color: isActive ? 'white' : 'var(--text-muted)',
-        background: isActive ? 'var(--bg-surface-hover)' : 'transparent',
-        borderLeft: isActive ? '3px solid var(--primary)' : '3px solid transparent',
-        transition: 'all 0.2s',
-        fontWeight: isActive ? 600 : 500
-      })}
+    <NavLink
+      to={to}
+      className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
     >
-      {icon}
+      <span className="sidebar-nav-icon">{icon}</span>
       <span>{label}</span>
     </NavLink>
   );

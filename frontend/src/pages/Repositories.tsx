@@ -343,24 +343,24 @@ const StatChip = ({ label, value, danger }: { label: string; value: number; dang
 const ScanBadge = ({ scan }: { scan: LastScan | null }) => {
   if (!scan) {
     return (
-      <span className="badge" style={{ background: 'var(--bg-surface-hover)', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-        <Shield size={12} /> не проверялся
+      <span className="badge badge-low">
+        <Shield size={11} /> Не проверялся
       </span>
     );
   }
 
   if (scan.status === 'FAILED' || (scan.status === 'COMPLETED' && !scan.policyResult)) {
     return (
-      <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-        <AlertTriangle size={12} /> проверка не завершена
+      <span className="badge badge-warning">
+        <AlertTriangle size={11} /> Проверка не завершена
       </span>
     );
   }
 
   if (scan.status !== 'COMPLETED') {
     return (
-      <span className="badge" style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-        <RefreshCw size={12} /> сканируется
+      <span className="badge badge-info">
+        <RefreshCw size={11} /> Сканируется
       </span>
     );
   }
@@ -369,11 +369,8 @@ const ScanBadge = ({ scan }: { scan: LastScan | null }) => {
   const isPass = scan.policyResult === 'PASS';
 
   return (
-    <span
-      className={`badge ${isBlock ? 'badge-critical' : isPass ? 'badge-accent' : 'badge-warning'}`}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-    >
-      {isPass ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+    <span className={`badge ${isBlock ? 'badge-critical' : isPass ? 'badge-accent' : 'badge-warning'}`}>
+      {isPass ? <ShieldCheck size={11} /> : <ShieldAlert size={11} />}
       {scan.policyResult}
       {scan.totalFindings > 0 && ` · ${scan.totalFindings}`}
     </span>
@@ -393,7 +390,7 @@ const RepoRow = ({
   const pulls = activity?.openPullRequests || [];
 
   return (
-    <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+    <div className="ds-card" style={{ marginBottom: '1rem', display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
       <div style={{ flex: 1, minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
           <a
@@ -404,7 +401,7 @@ const RepoRow = ({
           >
             {repo.fullName}
           </a>
-          <span className="badge" style={{ background: 'var(--bg-surface-hover)', border: '1px solid var(--border-color)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <span className="badge badge-low">
             {repo.isPrivate ? <Lock size={11} /> : <Globe size={11} />}
             {repo.isPrivate ? 'Приватный' : 'Публичный'}
           </span>
@@ -430,37 +427,37 @@ const RepoRow = ({
 
         {/* Кто последним пушил */}
         {commit && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', flexWrap: 'wrap' }}>
-            <GitCommitHorizontal size={14} color="var(--text-muted)" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+            <GitCommitHorizontal size={14} color="#60738C" />
             {commit.authorAvatar && (
               <img src={commit.authorAvatar} alt={commit.authorLogin} style={{ width: '18px', height: '18px', borderRadius: '50%' }} />
             )}
-            <strong style={{ color: '#e2e8f0' }}>{commit.authorLogin}</strong>
-            <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '38ch' }}>
+            <strong style={{ color: '#F1F4F8' }}>{commit.authorLogin}</strong>
+            <span style={{ color: '#91A3BA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '38ch' }}>
               {commit.message}
             </span>
             <code style={{ fontSize: '0.7rem', color: '#38bdf8' }}>{commit.sha}</code>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{timeAgo(commit.date)}</span>
+            <span style={{ color: '#60738C', fontSize: '0.72rem' }}>{timeAgo(commit.date)}</span>
           </div>
         )}
 
         {/* Кто открыл пулл-реквесты */}
         {pulls.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.25rem' }}>
             {pulls.slice(0, 3).map(pr => (
               <a
                 key={pr.number}
                 href={pr.url}
                 target="_blank"
                 rel="noreferrer"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: 'var(--text-muted)', textDecoration: 'none', flexWrap: 'wrap' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: '#91A3BA', textDecoration: 'none', flexWrap: 'wrap' }}
               >
-                <GitPullRequestArrow size={13} color="#86efac" />
-                <span style={{ color: '#86efac' }}>#{pr.number}</span>
+                <GitPullRequestArrow size={13} color="#4ade80" />
+                <span style={{ color: '#4ade80' }}>#{pr.number}</span>
                 {pr.authorAvatar && (
                   <img src={pr.authorAvatar} alt={pr.authorLogin} style={{ width: '16px', height: '16px', borderRadius: '50%' }} />
                 )}
-                <strong style={{ color: '#cbd5e1' }}>{pr.authorLogin}</strong>
+                <strong style={{ color: '#F1F4F8' }}>{pr.authorLogin}</strong>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '36ch' }}>
                   {pr.title}
                 </span>
@@ -468,7 +465,7 @@ const RepoRow = ({
               </a>
             ))}
             {pulls.length > 3 && (
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: '0.72rem', color: '#60738C' }}>
                 и ещё {pulls.length - 3} открытых PR
               </span>
             )}
@@ -476,18 +473,18 @@ const RepoRow = ({
         )}
 
         {activity?.error && (
-          <div style={{ fontSize: '0.72rem', color: 'var(--warning)' }}>
+          <div style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>
             Активность GitHub недоступна: {activity.error}
           </div>
         )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'stretch', minWidth: '150px' }}>
-        <button onClick={onScan} className="btn btn-primary" disabled={scanning}>
+        <button onClick={onScan} className="ds-btn ds-btn-primary" style={{ justifyContent: 'center' }} disabled={scanning}>
           {scanning ? 'Запуск...' : 'Сканировать'}
         </button>
         {repo.lastScan && (
-          <button onClick={onOpenScan} className="btn btn-outline" style={{ fontSize: '0.8rem' }}>
+          <button onClick={onOpenScan} className="ds-btn ds-btn-secondary" style={{ justifyContent: 'center' }}>
             Последний отчёт
           </button>
         )}
