@@ -26,6 +26,11 @@ export class OllamaService implements OnModuleInit {
   /** Ollama tags endpoint for health check */
   private readonly tagsUrl: string;
   private available = false;
+  /** Retry timer handle */
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryCount = 0;
+  private readonly MAX_RETRIES = 20;
+  private readonly RETRY_INTERVAL_MS = 30_000;
 
   constructor(private readonly configService: ConfigService) {
     this.baseUrl =
@@ -79,13 +84,43 @@ export class OllamaService implements OnModuleInit {
         `Ollama is not reachable at ${this.baseUrl}: ${msg}. AI features will be degraded.`,
       );
       this.available = false;
+      this.scheduleRetry();
     }
 
     return this.getStatus();
   }
 
+  /** Schedule a retry warmUp if we are not available yet. */
+  private scheduleRetry(): void {
+    if (this.retryTimer !== null || this.retryCount >= this.MAX_RETRIES) return;
+    this.retryCount++;
+    this.logger.log(
+      `Ollama retry #${this.retryCount} scheduled in ${this.RETRY_INTERVAL_MS / 1000}s`,
+    );
+    this.retryTimer = setTimeout(async () => {
+      this.retryTimer = null;
+      const status = await this.warmUp();
+      if (!status.available) {
+        this.scheduleRetry();
+      } else {
+        this.retryCount = 0;
+        this.logger.log('Ollama reconnected successfully.');
+      }
+    }, this.RETRY_INTERVAL_MS);
+  }
+
   isConfigured(): boolean {
     return !!this.baseUrl;
+  }
+
+  /** Force an immediate re-check and reset retry counter. */
+  async forceRetry(): Promise<OllamaPoolStatus> {
+    if (this.retryTimer !== null) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+    this.retryCount = 0;
+    return this.warmUp();
   }
 
   getStatus(): OllamaPoolStatus {
@@ -303,9 +338,10 @@ export class OllamaService implements OnModuleInit {
     } catch (error) {
       const msg = this.errorMessage(error);
       this.logger.warn('Ollama request failed: ' + msg);
-      // Если сервер упал — помечаем как недоступный до следующего warmUp
+      // Если сервер упал — помечаем как недоступный и планируем переподключение
       if (this.isNetworkError(error)) {
         this.available = false;
+        this.scheduleRetry();
       }
       return { ok: false, error: msg };
     }

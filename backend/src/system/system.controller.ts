@@ -1,4 +1,4 @@
-import { Controller, Get, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Logger, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -63,5 +63,12 @@ export class SystemController {
       },
       checkedAt: new Date().toISOString(),
     };
+  }
+
+  /** Немедленный повторный опрос Ollama — для кнопки «Повторить» в UI. */
+  @Post('ai/retry')
+  async retryAi() {
+    const status = await this.groqService.forceRetry();
+    return { status };
   }
 }

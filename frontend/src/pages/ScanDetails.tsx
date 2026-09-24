@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import SecurityControlsPanel from '../components/SecurityControlsPanel';
+import IBRequirementsPanel from '../components/IBRequirementsPanel';
 import MarkdownView from '../components/MarkdownView';
 import { useScanEvents } from '../hooks/useScanEvents';
 import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, MarkerType } from '@xyflow/react';
@@ -255,11 +256,57 @@ const ScanDetails = () => {
     } catch {}
   }, [id]);
 
+  const fileFindingsMap = useMemo(() => {
+    const map = new Map<string, FindingItem[]>();
+    (scan?.findings || []).forEach(f => {
+      if (f.filePath) {
+        const norm = f.filePath.replace(/\\/g, '/');
+        const list = map.get(norm) || [];
+        list.push(f);
+        map.set(norm, list);
+      }
+    });
+    return map;
+  }, [scan?.findings]);
+
+  const activeFileFindingLines = useMemo(() => {
+    if (!activeFilePath) return new Set<number>();
+    const norm = activeFilePath.replace(/\\/g, '/');
+    const list = fileFindingsMap.get(norm) || [];
+    const set = new Set<number>();
+    list.forEach(f => {
+      if (f.startLine && f.startLine > 0) {
+        set.add(f.startLine);
+        if (f.endLine && f.endLine >= f.startLine && f.endLine - f.startLine <= 10) {
+          for (let l = f.startLine; l <= f.endLine; l++) {
+            set.add(l);
+          }
+        }
+      }
+    });
+    return set;
+  }, [activeFilePath, fileFindingsMap]);
+
   // Fetch file content
   const openFile = useCallback(async (filePath: string, highlightLine: number | null = null) => {
     if (!id || !filePath) return;
-    setActiveFilePath(filePath);
-    setTargetHighlightLine(highlightLine);
+    const normPath = filePath.replace(/\\/g, '/');
+    setActiveFilePath(normPath);
+
+    // Если конкретная строка не передана (например, клик по файлу в проводнике),
+    // подсвечиваем и скроллим к первой находке в этом файле, если она есть.
+    let lineToHighlight = highlightLine;
+    if (lineToHighlight === null) {
+      const findingsForFile = fileFindingsMap.get(normPath);
+      if (findingsForFile && findingsForFile.length > 0) {
+        const firstWithLine = findingsForFile.find(f => f.startLine && f.startLine > 0);
+        if (firstWithLine && firstWithLine.startLine) {
+          lineToHighlight = firstWithLine.startLine;
+        }
+      }
+    }
+
+    setTargetHighlightLine(lineToHighlight);
     setFileLoading(true);
 
     try {
@@ -272,12 +319,11 @@ const ScanDetails = () => {
         setActiveFileContent(data.content || '');
         setActiveFileLineCount(data.lineCount || 0);
 
-        // Прокрутка к строке с повторами: единственная попытка через 100мс
-        // промахивалась, когда React ещё не отрисовал строки файла.
-        if (highlightLine) {
+        // Прокрутка к целевой строке с повторными попытками после рендера DOM
+        if (lineToHighlight) {
           let attempts = 0;
           const scrollToLine = () => {
-            const lineEl = document.getElementById(`code-line-${highlightLine}`);
+            const lineEl = document.getElementById(`code-line-${lineToHighlight}`);
             if (lineEl) {
               lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
               return;
@@ -294,7 +340,7 @@ const ScanDetails = () => {
     } finally {
       setFileLoading(false);
     }
-  }, [id]);
+  }, [id, fileFindingsMap]);
 
   // Fetch Architecture Graph (Graph A - Always exists)
   const fetchArchitectureGraph = useCallback(async () => {
@@ -484,7 +530,7 @@ const ScanDetails = () => {
       } else if (data.findings && data.findings.length > 0 && !activeFilePath) {
         const firstWithFile = data.findings.find(f => f.filePath);
         if (firstWithFile && firstWithFile.filePath) {
-          openFile(firstWithFile.filePath, firstWithFile.startLine || null);
+          openFile(firstWithFile.filePath, firstWithFile.startLine ?? null);
         }
       }
 
@@ -596,18 +642,6 @@ const ScanDetails = () => {
     return (archEdges as any[]).filter(e => ids.has(e.source) && ids.has(e.target));
   }, [archEdges, archFilter, visibleArchNodes]);
 
-  const fileFindingsMap = useMemo(() => {
-    const map = new Map<string, FindingItem[]>();
-    (scan?.findings || []).forEach(f => {
-      if (f.filePath) {
-        const norm = f.filePath.replace(/\\/g, '/');
-        const list = map.get(norm) || [];
-        list.push(f);
-        map.set(norm, list);
-      }
-    });
-    return map;
-  }, [scan?.findings]);
 
   // Render Tree recursively
   const renderTree = (nodes: FileTreeNode[]) => {
@@ -1060,10 +1094,14 @@ const ScanDetails = () => {
                 <FileCode size={14} color="#60a5fa" />
                 <span style={{ color: 'white', fontWeight: 500 }}>{activeFilePath || 'Выберите файл для инспекции'}</span>
               </div>
-              {targetHighlightLine && (
+              {(targetHighlightLine || activeFileFindingLines.size > 0) && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#f87171', fontSize: '0.75rem' }}>
                   <AlertTriangle size={13} />
-                  <span>Уязвимость в строке {targetHighlightLine}</span>
+                  <span>
+                    {targetHighlightLine
+                      ? `Уязвимость в строке ${targetHighlightLine}`
+                      : `Уязвимостей в файле: ${activeFileFindingLines.size}`}
+                  </span>
                 </div>
               )}
             </div>
@@ -1082,7 +1120,9 @@ const ScanDetails = () => {
               ) : (
                 activeFileContent.split(/\r?\n/).map((line, idx) => {
                   const lineNum = idx + 1;
-                  const isHighlighted = targetHighlightLine === lineNum;
+                  const isTarget = targetHighlightLine === lineNum;
+                  const isFindingLine = activeFileFindingLines.has(lineNum);
+                  const isHighlighted = isTarget || isFindingLine;
 
                   return (
                     <div
@@ -1091,8 +1131,17 @@ const ScanDetails = () => {
                       style={{
                         display: 'flex',
                         padding: '1px 0',
-                        background: isHighlighted ? 'rgba(239, 68, 68, 0.25)' : 'transparent',
-                        borderLeft: isHighlighted ? '3px solid #ef4444' : '3px solid transparent',
+                        background: isTarget
+                          ? 'rgba(239, 68, 68, 0.32)'
+                          : isFindingLine
+                          ? 'rgba(239, 68, 68, 0.16)'
+                          : 'transparent',
+                        borderLeft: isTarget
+                          ? '4px solid #ef4444'
+                          : isFindingLine
+                          ? '3px solid rgba(239, 68, 68, 0.65)'
+                          : '3px solid transparent',
+                        transition: 'background 0.15s ease',
                       }}
                     >
                       <span
@@ -1283,7 +1332,7 @@ const ScanDetails = () => {
                                 style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  openFile(f.filePath!, f.startLine || 1);
+                                  openFile(f.filePath!, f.startLine ?? null);
                                 }}
                                 title="Перейти к строке в редакторе"
                               >
@@ -1389,9 +1438,9 @@ const ScanDetails = () => {
                                       <button
                                         className="btn btn-outline"
                                         style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}
-                                        onClick={() => openFile(f.filePath!, f.startLine || 1)}
+                                        onClick={() => openFile(f.filePath!, f.startLine ?? null)}
                                       >
-                                        Открыть {f.filePath}:{f.startLine}
+                                        Открыть {f.filePath}{f.startLine ? `:${f.startLine}` : ''}
                                       </button>
                                     )}
                                   </div>
@@ -1500,7 +1549,7 @@ const ScanDetails = () => {
                                         <button
                                           className="btn btn-outline"
                                           style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }}
-                                          onClick={() => openFile(f.filePath!, f.startLine || 1)}
+                                          onClick={() => openFile(f.filePath!, f.startLine ?? null)}
                                         >
                                           Открыть код в редакторе
                                         </button>
@@ -1699,7 +1748,10 @@ const ScanDetails = () => {
         </div>
       )}
 
-      {/* 6. ФУНКЦИИ ИНФОРМАЦИОННОЙ БЕЗОПАСНОСТИ */}
+      {/* 6. ТРЕБОВАНИЯ ИБ (ИБ-01…ИБ-08) — ТЗ п. 4.5 */}
+      <IBRequirementsPanel scanId={id} scanStatus={scan?.status} onOpenFile={openFile} />
+
+      {/* 7. ФУНКЦИИ ИНФОРМАЦИОННОЙ БЕЗОПАСНОСТИ */}
       <SecurityControlsPanel scanId={id} scanStatus={scan?.status} onOpenFile={openFile} />
 
       {/* 7. GRAPH A: АРХИТЕКТУРНЫЙ ГРАФ ПРОЕКТА (в самом низу страницы) */}

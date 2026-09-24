@@ -92,7 +92,6 @@ const Layout = () => {
       <aside className="sidebar">
         {/* Logo */}
         <div className="sidebar-logo">
-          <img src="/favicon.svg" alt="KMG Digital" className="sidebar-logo-icon" />
           <div className="sidebar-logo-text">
             <span className="sidebar-logo-name">KMG</span>
             <span className="sidebar-logo-sub">DIGITAL</span>

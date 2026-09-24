@@ -88,12 +88,30 @@ const SecurityControlsPanel = ({
     };
   }, [scanId, scanStatus]);
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+        Загрузка функций информационной безопасности...
+      </div>
+    );
+  }
 
   const controls = data?.controls || [];
-  // Контроли оцениваются на этапе AI-анализа: пока их нет — честнее не
-  // показывать ничего, чем показывать пустую матрицу.
-  if (controls.length === 0) return null;
+  if (controls.length === 0) {
+    return (
+      <div className="card" style={{ padding: 0 }}>
+        <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border-color)" }}>
+          <h3 style={{ margin: 0, fontSize: "1.05rem" }}>Функции информационной безопасности</h3>
+          <p style={{ margin: "0.25rem 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+            Анализ присутствия базовых механизмов защиты в исходном коде
+          </p>
+        </div>
+        <div style={{ padding: "1.25rem 1.5rem", color: "var(--text-muted)", fontSize: "0.85rem", lineHeight: 1.5 }}>
+          Для данного сканирования функции ИБ еще не рассчитаны. Выполните повторное сканирование репозитория.
+        </div>
+      </div>
+    );
+  }
 
   const summary = data!.summary;
 

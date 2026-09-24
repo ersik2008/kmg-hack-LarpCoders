@@ -244,11 +244,24 @@ const Settings = () => {
 /** Live component health, probed by the backend on every refresh. */
 const SystemStatusCard = ({ status, onRefresh }: { status: SystemStatus | null; onRefresh: () => void }) => {
   const [refreshing, setRefreshing] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   const refresh = async () => {
     setRefreshing(true);
     await onRefresh();
     setRefreshing(false);
+  };
+
+  const retryAi = async () => {
+    setRetrying(true);
+    try {
+      await fetch(`${API}/system/ai/retry`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      await onRefresh();
+    } catch {}
+    setRetrying(false);
   };
 
   const tools = status?.securityEngine.tools;
@@ -281,14 +294,28 @@ const SystemStatusCard = ({ status, onRefresh }: { status: SystemStatus | null; 
             detail={tools ? (tools[tool] ? 'установлен' : 'НЕ НАЙДЕН в образе') : 'движок недоступен'}
           />
         ))}
-        <StatusRow
-          label="AI (Qwen)"
-          ok={Boolean(status?.ai.available)}
-          detail={status?.ai.configured
-            ? (status.ai.model || 'модель по умолчанию') + ' · ' +
-              status.ai.healthyKeys + '/' + status.ai.totalKeys + ' ключей готовы'
-            : 'OLLAMA_BASE_URL не настроен'}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <StatusRow
+            label="AI (Qwen / Ollama)"
+            ok={Boolean(status?.ai.available)}
+            detail={status?.ai.configured
+              ? (status.ai.available
+                  ? (status.ai.model || 'qwen3') + ' · готов '
+                  : 'недоступен — повторите подключение')
+              : 'OLLAMA_BASE_URL не настроен'}
+          />
+          {status?.ai.configured && !status.ai.available && (
+            <button
+              className="btn btn-outline"
+              onClick={retryAi}
+              disabled={retrying}
+              style={{ fontSize: '0.72rem', padding: '0.25rem 0.6rem', flexShrink: 0, whiteSpace: 'nowrap' }}
+            >
+              {retrying ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={13} />}
+              {retrying ? 'Подключение...' : 'Повторить'}
+            </button>
+          )}
+        </div>
         <StatusRow
           label="GitHub OAuth"
           ok={Boolean(status?.github.oauthConfigured)}
