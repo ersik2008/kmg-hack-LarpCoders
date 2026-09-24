@@ -1,0 +1,117 @@
+name: 'KMG AI Security Gate'
+description: 'KMG AI security policy check: CI blocks on BLOCK or incomplete scans; local hooks remain advisory'
+author: 'KMG AI Security Agent'
+
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  api-url:
+    description: 'Адрес KMG API, например https://kmg.example.com/api'
+    required: true
+  token:
+    description: 'Токен сессии KMG (храните в secrets)'
+    required: true
+  block-on:
+    description: 'Порог блокировки: CRITICAL, HIGH, ANY или policy (вердикт из настроек KMG)'
+    required: false
+    default: 'policy'
+  fail-open:
+    description: 'true — разрешить build только при недоступном API; BLOCK/INCOMPLETE всё равно завершаются ошибкой'
+    required: false
+    default: 'false'
+  paths:
+    # ТЗ п. 4.4.1: агент обязан анализировать проект целиком, а не только файлы
+    # коммита. Сквозные требования (единый слой журналирования, общий middleware
+    # аутентификации) по одному изменённому файлу не проверяются в принципе,
+    # поэтому значение по умолчанию — all. `changed` остаётся для быстрых
+    # черновых прогонов и полноту анализа не обеспечивает.
+    description: 'Что проверять: all (весь репозиторий, по умолчанию) или changed (только изменённые файлы)'
+    required: false
+    default: 'all'
+  max-files:
+    # Потолок рассчитан на полный репозиторий. Превышение не игнорируется: это
+    # неполная проверка, и агент завершается кодом 2, а не «успехом».
+    description: 'Максимум файлов в одной проверке'
+    required: false
+    default: '5000'
+  upload-sarif:
+    description: 'Выгружать находки в GitHub Code Scanning (нужен permissions: security-events: write)'
+    required: false
+    default: 'true'
+
+outputs:
+  verdict:
+    description: 'BLOCK / REVIEW / PASS или INCOMPLETE'
+    value: ${{ steps.scan.outputs.verdict }}
+  exit-code:
+    description: 'Код завершения по ТЗ п. 4.3.3: 0 — нарушений нет, 1 — нарушения выявлены, 2 — проверка не выполнена'
+    value: ${{ steps.scan.outputs.exit-code }}
+  critical:
+    description: 'Количество критических находок'
+    value: ${{ steps.scan.outputs.critical }}
+  violated-requirements:
+    description: 'Нарушенные требования ИБ через запятую (пусто, если нарушений нет)'
+    value: ${{ steps.scan.outputs.violated-requirements }}
+  report-md:
+    description: 'Путь к Markdown-отчёту'
+    value: ${{ steps.scan.outputs.report-md }}
+  report:
+    description: 'Путь к JSON-отчёту'
+    value: ${{ steps.scan.outputs.report }}
+  sarif:
+    description: 'Путь к SARIF-отчёту'
+    value: ${{ steps.scan.outputs.sarif }}
+
+runs:
+  using: 'composite'
+  steps:
+    # A shallow checkout has no base commit to diff against, so the scan would
+    # fall back to the whole tree. Deepen just enough to compare with the base.
+    - name: Prepare git history
+      shell: bash
+      run: |
+        if [ "${{ inputs.paths }}" = "changed" ]; then
+          git fetch --deepen=50 origin "${{ github.base_ref || github.ref_name }}" 2>/dev/null || true
+        fi
+
+    - name: KMG security scan
+      id: scan
+      shell: bash
+      env:
+        KMG_API_URL: ${{ inputs.api-url }}
+        KMG_TOKEN: ${{ inputs.token }}
+        KMG_BLOCK_ON: ${{ inputs.block-on }}
+        KMG_FAIL_OPEN: ${{ inputs.fail-open }}
+        KMG_MAX_FILES: ${{ inputs.max-files }}
+        KMG_SCAN_SCOPE: ${{ inputs.paths }}
+        KMG_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        KMG_HEAD_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        KMG_GITHUB_STEP_SUMMARY: ${{ github.step_summary }}
+      run: node "${{ github.action_path }}/tools/git-hooks/kmg-guard.mjs" ci
+
+    # ТЗ п. 4.3.4: отчёт сохраняется как артефакт сборки и доступен после
+    # завершения пайплайна независимо от его результата, поэтому if: always().
+    # Выгружаются только JSON и Markdown-отчёты и SARIF; сырой ответ backend в
+    # артефакт не попадает.
+    - name: Upload agent report
+      if: always() && hashFiles('kmg-scan-report.json') != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: kmg-security-report
+        path: |
+          kmg-scan-report.json
+          kmg-report.md
+          kmg-results.sarif
+        if-no-files-found: warn
+
+    # Находки попадают во вкладку Security репозитория с аннотациями на строках.
+    # if: always() — выгружаем и тогда, когда проверка провалила сборку: именно
+    # в этом случае отчёт нужнее всего.
+    - name: Upload SARIF to GitHub Code Scanning
+      if: always() && inputs.upload-sarif == 'true' && hashFiles('kmg-results.sarif') != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: kmg-results.sarif
+        category: kmg-ai-security

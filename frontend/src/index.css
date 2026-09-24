@@ -1,0 +1,893 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Dark Theme Palette */
+  --bg-dark: #0a0a0c;
+  --bg-surface: #13141a;
+  --bg-surface-hover: #1e2029;
+  
+  --primary-glow: rgba(99, 102, 241, 0.5);
+  --primary: #6366f1;
+  --primary-hover: #818cf8;
+  
+  --accent: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  
+  --text-main: #f3f4f6;
+  --text-muted: #9ca3af;
+  
+  --border-color: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(19, 20, 26, 0.7);
+  
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 24px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism utilities */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Typography */
+h1, h2, h3, h4 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+h2 { font-size: 1.5rem; margin-bottom: 0.75rem; }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary), #4f46e5);
+  color: white;
+  box-shadow: 0 4px 15px var(--primary-glow);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--primary-glow);
+  background: linear-gradient(135deg, var(--primary-hover), var(--primary));
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+}
+
+.btn-outline:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--text-muted);
+}
+
+/* Layout */
+.app-container {
+  display: flex;
+  height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* Cards */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+  border-color: rgba(255,255,255,0.15);
+}
+
+/* Badges */
+.badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge-critical { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+.badge-high { background: rgba(245, 158, 11, 0.15); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.3); }
+.badge-medium { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+.badge-low { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3); }
+
+/* ===== Login screen ===== */
+
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  background:
+    radial-gradient(900px circle at 12% 18%, rgba(99, 102, 241, 0.16), transparent 55%),
+    radial-gradient(800px circle at 88% 82%, rgba(16, 185, 129, 0.12), transparent 55%),
+    var(--bg-dark);
+}
+
+.login-grid {
+  width: 100%;
+  max-width: 1080px;
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 3.5rem;
+  align-items: center;
+}
+
+/* --- left column --- */
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 2.25rem;
+}
+
+.login-brand-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), #4f46e5);
+  box-shadow: 0 8px 24px var(--primary-glow);
+}
+
+.login-brand-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fff;
+}
+
+.login-brand-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.login-title {
+  font-size: 2.6rem;
+  line-height: 1.15;
+  font-weight: 700;
+  margin: 0 0 1.1rem;
+  letter-spacing: -0.02em;
+}
+
+.login-title-accent {
+  background: linear-gradient(135deg, var(--primary-hover), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.login-lead {
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1.65;
+  max-width: 34rem;
+  margin: 0 0 2.25rem;
+}
+
+.login-lead code {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.88em;
+  color: var(--text-main);
+}
+
+.login-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.login-features li {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+}
+
+.login-feature-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-hover);
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.login-features strong {
+  display: block;
+  font-size: 0.92rem;
+  color: var(--text-main);
+  margin-bottom: 0.15rem;
+}
+
+.login-feature-text {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* --- right column: the card --- */
+
+.login-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 2.25rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.login-card-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.login-card-sub {
+  margin: 0 0 1.5rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.login-error {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1.25rem;
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.login-error svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.login-github-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 0.95rem 1rem;
+  font-size: 0.97rem;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-sm);
+  background: #1f2330;
+  transition: background 0.18s, transform 0.18s, box-shadow 0.18s;
+}
+
+.login-github-btn:hover:not(:disabled) {
+  background: #2a2f40;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.login-github-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.login-scopes {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.login-scopes-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 0.7rem;
+}
+
+.login-scopes ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.login-scopes li {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.login-scopes code {
+  color: var(--primary-hover);
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  margin-right: 0.25rem;
+}
+
+.login-note {
+  margin: 1.5rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+@media (max-width: 900px) {
+  .login-grid {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+    max-width: 520px;
+  }
+
+  .login-title {
+    font-size: 2rem;
+  }
+
+  .login-features {
+    display: none;
+  }
+}
+
+/* ===== Модальное подтверждение ===== */
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(3, 7, 18, 0.72);
+  backdrop-filter: blur(3px);
+  animation: confirm-fade 0.15s ease;
+}
+
+.confirm-dialog {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.7);
+  animation: confirm-pop 0.18s ease;
+}
+
+.confirm-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.confirm-dialog-icon {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(99, 102, 241, 0.14);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #a5b4fc;
+}
+
+.confirm-dialog-icon.is-danger {
+  background: rgba(239, 68, 68, 0.13);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+.confirm-dialog-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  color: var(--text-main);
+}
+
+.confirm-dialog-text {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  margin-top: 1.4rem;
+}
+
+.confirm-btn {
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.confirm-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.confirm-btn-cancel {
+  background: transparent;
+  border-color: var(--border-color);
+  color: var(--text-muted);
+}
+
+.confirm-btn-cancel:hover:not(:disabled) {
+  border-color: var(--text-muted);
+  color: var(--text-main);
+}
+
+.confirm-btn-primary {
+  background: var(--primary);
+  color: white;
+}
+
+.confirm-btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.confirm-btn-danger {
+  background: var(--danger);
+  color: white;
+}
+
+.confirm-btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+@keyframes confirm-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes confirm-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ===== Прогресс пайплайна сканирования ===== */
+
+.pipeline {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  /* Отступ по краям = половине кружка: рельс начинается и кончается
+     ровно в центрах крайних шагов, а не под их подписями. */
+  padding: 0 calc((100% / 5) / 2);
+}
+
+.pipeline-rail,
+.pipeline-rail-fill {
+  position: absolute;
+  top: 14px;
+  left: calc((100% / 5) / 2);
+  right: calc((100% / 5) / 2);
+  height: 2px;
+  border-radius: 2px;
+}
+
+.pipeline-rail {
+  background: var(--border-color);
+}
+
+.pipeline-rail-fill {
+  right: auto;
+  max-width: calc(100% - (100% / 5));
+  background: linear-gradient(90deg, var(--accent), var(--primary));
+  transition: width 0.45s ease;
+}
+
+.pipeline-step {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  /* Подпись шире кружка — позволяем ей выходить за его габариты. */
+  width: 0;
+  overflow: visible;
+}
+
+.pipeline-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--bg-dark);
+  border: 2px solid var(--border-color);
+  color: var(--text-muted);
+  transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+}
+
+.pipeline-dot.is-done {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06281c;
+}
+
+.pipeline-dot.is-current {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+  box-shadow: 0 0 0 5px rgba(99, 102, 241, 0.16);
+  animation: pipeline-pulse 1.8s ease-in-out infinite;
+}
+
+.pipeline-label {
+  font-size: 0.72rem;
+  line-height: 1.25;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.pipeline-label.is-done {
+  color: #cbd5e1;
+}
+
+.pipeline-label.is-current {
+  color: white;
+  font-weight: 600;
+}
+
+@keyframes pipeline-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14); }
+  50%      { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.05); }
+}
+
+.scan-spin {
+  animation: scan-spin-rotate 1.4s linear infinite;
+}
+
+@keyframes scan-spin-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* ===== Лента метрик скана ===== */
+
+.scan-ribbon {
+  padding: 0;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid #1e293b;
+  overflow: hidden;
+}
+
+/* Лента информационная, а не интерактивная — подъём при наведении здесь
+   только дёргал страницу. */
+.scan-ribbon:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: #1e293b;
+}
+
+.scan-metrics {
+  display: flex;
+  align-items: center;
+  gap: 1.75rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1.35rem;
+}
+
+.scan-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.scan-metric-wide {
+  max-width: 24rem;
+}
+
+.scan-metric-label {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.scan-metric-value {
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--text-main);
+  line-height: 1.3;
+}
+
+.scan-metric-langs {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 550;
+}
+
+.scan-severities {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+/* Счётчик = число + подпись: цифра крупная, читается с одного взгляда. */
+.scan-sev {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 0.28rem 0.5rem;
+  border-radius: var(--radius-sm);
+  line-height: 1.15;
+}
+
+.scan-sev-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.scan-sev-label {
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  opacity: 0.82;
+}
+
+.badge-info {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+/* Нулевые категории приглушены, чтобы взгляд шёл к ненулевым. */
+.scan-sev.is-empty {
+  opacity: 0.4;
+}
+
+.scan-detectors {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 1.35rem;
+  border-top: 1px solid #1e293b;
+  background: rgba(2, 6, 23, 0.35);
+}
+
+.scan-detectors-title {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.scan-detectors-list {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.scan-detector {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  border: 1px solid transparent;
+}
+
+.scan-detector-mark {
+  font-size: 0.76rem;
+  line-height: 1;
+}
+
+.scan-detector-name {
+  font-weight: 600;
+}
+
+.scan-detector-kind {
+  font-size: 0.64rem;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Число находок — отдельной «таблеткой», чтобы не сливалось с названием. */
+.scan-detector-count {
+  padding: 0 0.34rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.11);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.scan-detector.is-ok {
+  background: rgba(16, 185, 129, 0.13);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+
+.scan-detector.is-fail {
+  background: rgba(239, 68, 68, 0.13);
+  border-color: rgba(239, 68, 68, 0.38);
+  color: #f87171;
+}
+
+.scan-detector.is-pending {
+  background: rgba(100, 116, 139, 0.16);
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+.scan-detector.is-warn {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.38);
+  color: #fbbf24;
+}
+
+.scan-detector.is-ai {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(99, 102, 241, 0.32);
+  color: #a5b4fc;
+}
+
+.scan-detectors-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 1.35rem 0.9rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .scan-severities { margin-left: 0; }
+  .scan-metric-wide { max-width: 100%; }
+}
+
+/* ===== Шапка скана: вердикт, риск и действия ===== */
+
+.scan-header-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* Карточка метрики фиксированной высоты — рядом с кнопками не «пляшет». */
+.scan-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  min-height: 56px;
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+}
+
+.scan-stat-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.scan-stat-risk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.scan-refresh-btn {
+  min-height: 56px;
+  padding: 0 0.95rem;
+}

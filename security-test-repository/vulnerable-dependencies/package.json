@@ -1,0 +1,10 @@
+{
+  "name": "vulnerable-app-deps",
+  "version": "1.0.0",
+  "description": "Fixture with known vulnerable dependencies for testing SCA scanners",
+  "dependencies": {
+    "lodash": "4.17.15",
+    "axios": "0.19.0",
+    "jsonwebtoken": "8.5.1"
+  }
+}

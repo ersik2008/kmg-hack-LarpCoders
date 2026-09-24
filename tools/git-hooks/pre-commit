@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# KMG AI Security Agent — pre-commit hook (advisory).
+#
+# Scans staged content and reports problems before the commit is created.
+# This hook is always advisory; CI/GitHub is the enforcing gate.
+#
+# Installed by tools/git-hooks/install.sh
+
+KMG_GUARD="${KMG_GUARD_PATH:-$(git config --get kmg.guardpath)}"
+[ -n "$KMG_GUARD" ] || KMG_GUARD="$(git rev-parse --show-toplevel)/tools/git-hooks/kmg-guard.mjs"
+
+if [ ! -f "$KMG_GUARD" ]; then
+  echo "[KMG] kmg-guard.mjs not found at $KMG_GUARD — set KMG_GUARD_PATH." >&2
+  exit 0
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "[KMG] Node.js not found in PATH — staged-code check skipped." >&2
+  exit 0
+fi
+
+node "$KMG_GUARD" pre-commit
+status=$?
+
+if [ "$status" -ne 0 ]; then
+  echo "[KMG] Local security hook ended unexpectedly — commit allowed." >&2
+  echo "[KMG] Review findings before opening a Pull Request." >&2
+fi
+exit 0

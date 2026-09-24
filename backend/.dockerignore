@@ -1,0 +1,11 @@
+# Never bake local secrets into the image: COPY . . was pulling backend/.env
+# into a layer, and it also silently overrode the compose configuration.
+.env
+.env.*
+!.env.example
+
+node_modules
+dist
+coverage
+*.tsbuildinfo
+.git

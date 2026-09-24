@@ -1,0 +1,401 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ===== User & Auth =====
+
+model User {
+  id        String   @id @default(uuid())
+  email     String?  @unique
+  name      String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  githubAccount GitHubAccount?
+  scans         Scan[]
+  repositories  UserRepository[]
+
+  @@map("users")
+}
+
+model GitHubAccount {
+  id                String @id @default(uuid())
+  githubId          Int    @unique
+  login             String
+  accessTokenHash   String // encrypted access token
+  avatarUrl         String?
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("github_accounts")
+}
+
+// ===== Repository =====
+
+model Repository {
+  id            String  @id @default(uuid())
+  githubId      Int     @unique
+  name          String
+  fullName      String
+  owner         String
+  isPrivate     Boolean @default(false)
+  defaultBranch String  @default("main")
+  language      String?
+  description   String?
+  url           String
+  // Время последнего пуша в GitHub (не время обновления нашей строки) —
+  // по нему сортируется список репозиториев по реальной активности.
+  pushedAt      DateTime?
+  stars         Int      @default(0)
+  openIssues    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  scans Scan[]
+  users UserRepository[]
+
+  @@map("repositories")
+}
+
+/**
+ * Доступ пользователя к репозиторию. Таблица repositories общая, а список на
+ * странице должен содержать ровно то, что GitHub отдаёт этому пользователю —
+ * включая репозитории, где он коллаборатор, а не владелец.
+ */
+model UserRepository {
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([userId, repositoryId])
+  @@index([repositoryId])
+  @@map("user_repositories")
+}
+
+// ===== Scan =====
+
+model Scan {
+  id          String     @id @default(uuid())
+  status      ScanStatus @default(PENDING)
+  branch      String?
+  commitSha   String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  riskScore   Float?
+  policyResult PolicyResult?
+  errorMessage String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  findings    Finding[]
+  graphNodes  GraphNode[]
+  graphEdges  GraphEdge[]
+  attackPaths AttackPath[]
+  aiAnalyses  AIAnalysis[]
+  scanResult  ScanResult?
+  controls    SecurityControl[]
+  requirements RequirementResult[]
+
+  @@map("scans")
+}
+
+// ===== Findings =====
+
+model Finding {
+  id          String     @id @default(uuid())
+  scanner     String     // semgrep | gitleaks | trivy
+  ruleId      String?
+  severity    Severity
+  confidence  Confidence
+  title       String
+  description String?
+  filePath    String?
+  startLine   Int?
+  endLine     Int?
+  codeSnippet String?
+  category    String?
+  metadata    Json?
+  createdAt   DateTime   @default(now())
+
+  scanId String
+  scan   Scan   @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  aiAnalyses AIAnalysis[]
+  graphNodes GraphNode[]
+
+  @@map("findings")
+}
+
+// ===== Security Controls (проверка функций ИБ) =====
+//
+// Отдельно от Finding: находка — это "здесь есть уязвимость", а контроль — это
+// "реализована ли в проекте функция безопасности и правильно ли". ТЗ требует
+// именно проверки функций ИБ, а не только поиска дефектов.
+
+model SecurityControl {
+  id             String        @id @default(uuid())
+  control        String        // AUTHENTICATION | AUTHORIZATION | ...
+  title          String
+  status         ControlStatus
+  confidence     Confidence
+  summary        String
+  risk           String?
+  recommendation String?
+  evidence       Json?         // [{ filePath, line, snippet, note }]
+  createdAt      DateTime      @default(now())
+
+  scanId String
+  scan   Scan   @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@unique([scanId, control])
+  @@map("security_controls")
+}
+
+// ===== Requirement Results (обязательные Требования ИБ-01…ИБ-08) =====
+//
+// Отдельно от SecurityControl: контроль — это "есть ли в проекте механизм
+// защиты вообще" (аутентификация, криптография, ...), а требование — это
+// "соответствует ли проект конкретному пункту 4.5 ТЗ". Именно по статусам
+// требований принимается решение о блокировке пайплайна (ТЗ п. 4.3.3, 4.8.1).
+
+model RequirementResult {
+  id                 String            @id @default(uuid())
+  requirementId      String            // ИБ-01 … ИБ-08
+  title              String
+  requirementText    String
+  status             RequirementStatus
+  confidence         Confidence
+  summary            String
+  insufficientReason String?
+  evidence           Json?             // [{ filePath, line, snippet, note, kind }]
+  violations         Json?             // [{ filePath, lineStart, lineEnd, symbol, evidence, explanation, severity, confidence, recommendation }]
+  createdAt          DateTime          @default(now())
+
+  scanId String
+  scan   Scan   @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@unique([scanId, requirementId])
+  @@map("requirement_results")
+}
+
+// ===== Security Graph =====
+
+model GraphNode {
+  id       String   @id @default(uuid())
+  type     NodeType
+  label    String
+  filePath String?
+  line     Int?
+  metadata Json?
+
+  scanId String
+  scan   Scan   @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  findingId String?
+  finding   Finding? @relation(fields: [findingId], references: [id], onDelete: SetNull)
+
+  outEdges       GraphEdge[]      @relation("sourceEdges")
+  inEdges        GraphEdge[]      @relation("targetEdges")
+  attackPathNodes AttackPathNode[]
+
+  @@map("graph_nodes")
+}
+
+model GraphEdge {
+  id         String   @id @default(uuid())
+  type       EdgeType
+  label      String?
+  confidence Float    @default(1.0)
+  metadata   Json?
+
+  scanId String
+  scan   Scan   @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  sourceId String
+  source   GraphNode @relation("sourceEdges", fields: [sourceId], references: [id], onDelete: Cascade)
+
+  targetId String
+  target   GraphNode @relation("targetEdges", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@map("graph_edges")
+}
+
+// ===== Attack Paths =====
+
+model AttackPath {
+  id          String     @id @default(uuid())
+  title       String
+  description String?
+  severity    Severity
+  confidence  Confidence
+  impact      String?
+  remediation String?
+  createdAt   DateTime   @default(now())
+
+  scanId String
+  scan   Scan   @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  nodes AttackPathNode[]
+
+  @@map("attack_paths")
+}
+
+model AttackPathNode {
+  id    String @id @default(uuid())
+  order Int
+
+  attackPathId String
+  attackPath   AttackPath @relation(fields: [attackPathId], references: [id], onDelete: Cascade)
+
+  graphNodeId String
+  graphNode   GraphNode @relation(fields: [graphNodeId], references: [id], onDelete: Cascade)
+
+  @@map("attack_path_nodes")
+}
+
+// ===== AI Analysis =====
+
+model AIAnalysis {
+  id       String  @id @default(uuid())
+  type     String  // finding_analysis | attack_path_explanation | remediation
+  prompt   String?
+  response String
+  model    String  @default("groq")
+  metadata Json?
+  createdAt DateTime @default(now())
+
+  scanId String
+  scan   Scan   @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  findingId String?
+  finding   Finding? @relation(fields: [findingId], references: [id], onDelete: SetNull)
+
+  @@map("ai_analyses")
+}
+
+// ===== Scan Result =====
+
+model ScanResult {
+  id             String       @id @default(uuid())
+  totalFindings  Int          @default(0)
+  criticalCount  Int          @default(0)
+  highCount      Int          @default(0)
+  mediumCount    Int          @default(0)
+  lowCount       Int          @default(0)
+  infoCount      Int          @default(0)
+  attackPathCount Int         @default(0)
+  riskScore      Float        @default(0)
+  policyResult   PolicyResult @default(PASS)
+  summary        String?
+  createdAt      DateTime     @default(now())
+
+  scanId String @unique
+  scan   Scan   @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@map("scan_results")
+}
+
+// ===== Policy =====
+
+model Policy {
+  id       String  @id @default(uuid())
+  name     String
+  rules    Json    // threshold rules for PASS/REVIEW/BLOCK
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("policies")
+}
+
+// ===== Enums =====
+
+enum ScanStatus {
+  PENDING
+  CLONING
+  SCANNING
+  ANALYZING
+  GRAPHING
+  RISK_CALCULATING
+  COMPLETED
+  FAILED
+}
+
+enum PolicyResult {
+  PASS
+  REVIEW
+  BLOCK
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum Confidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ControlStatus {
+  IMPLEMENTED
+  PARTIAL
+  MISSING
+  NOT_APPLICABLE
+  UNKNOWN
+}
+
+enum RequirementStatus {
+  PASS
+  VIOLATION
+  INSUFFICIENT_EVIDENCE
+  NOT_APPLICABLE
+}
+
+enum NodeType {
+  REPOSITORY
+  FILE
+  FUNCTION
+  ENDPOINT
+  USER_INPUT
+  VALIDATION
+  SINK
+  DATABASE
+  DEPENDENCY
+  SECRET
+  FINDING
+}
+
+enum EdgeType {
+  CONTAINS
+  IMPORTS
+  CALLS
+  READS
+  WRITES
+  FLOWS_TO
+  DEPENDS_ON
+  RELATED_TO
+  CAUSES
+}

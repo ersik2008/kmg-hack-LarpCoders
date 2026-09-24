@@ -1,0 +1,34 @@
+#!/bin/sh
+#
+# KMG AI Security Agent — pre-push hook.
+#
+# Runs the advisory local check before objects are transferred. The guard shows
+# real findings but always exits 0 locally; CI/GitHub is the enforcing gate.
+#
+# Installed by tools/git-hooks/install.sh
+
+KMG_GUARD="${KMG_GUARD_PATH:-$(git config --get kmg.guardpath)}"
+[ -n "$KMG_GUARD" ] || KMG_GUARD="$(git rev-parse --show-toplevel)/tools/git-hooks/kmg-guard.mjs"
+
+if [ ! -f "$KMG_GUARD" ]; then
+  echo "[KMG] kmg-guard.mjs not found at $KMG_GUARD — push allowed locally." >&2
+  echo "[KMG] CI/GitHub security check will perform the authoritative scan." >&2
+  exit 0
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "[KMG] Node.js was not found; local security scan could not run." >&2
+  echo "[KMG] Push allowed locally. CI/GitHub security check will perform the authoritative scan." >&2
+  exit 0
+fi
+
+node "$KMG_GUARD" pre-push "$1" "$2"
+status=$?
+
+# The guard itself makes local results advisory. Keep that contract even for an
+# unexpected Node/guard failure that happens before it can handle the error.
+if [ "$status" -ne 0 ]; then
+  echo "[KMG] Local security hook ended unexpectedly — push allowed locally." >&2
+  echo "[KMG] CI/GitHub security check will perform the authoritative scan." >&2
+fi
+exit 0

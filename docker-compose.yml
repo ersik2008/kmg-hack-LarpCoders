@@ -1,0 +1,134 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kmg-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      # ВНИМАНИЕ: значение по умолчанию оставлено ради совместимости с уже
+      # созданным томом pgdata (пароль применяется только при первой инициализации,
+      # смена здесь сломает подключение к существующей базе). Для любого
+      # развёртывания, кроме локального, задайте DB_PASSWORD в .env до первого запуска.
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-Adil3110}
+      POSTGRES_DB: kmg
+    # Только localhost: раньше порт БД был опубликован на все интерфейсы хоста.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kmg-backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-Adil3110}@postgres:5432/kmg
+      - PORT=3000
+      - FRONTEND_URL=http://localhost:5173
+      - SECURITY_ENGINE_URL=http://security-engine:8000
+      - GROQ_API_KEYS=${GROQ_API_KEYS:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
+      - GROQ_KEY_COOLDOWN_MS=${GROQ_KEY_COOLDOWN_MS:-15000}
+      - GROQ_KEY_PROBE_TIMEOUT_MS=${GROQ_KEY_PROBE_TIMEOUT_MS:-5000}
+      # Ollama — основной AI-провайдер (локальный Ollama через Tailscale)
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://100.78.81.65:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3.5:latest}
+      # 0 = анализировать все находки; потолок задаётся только вручную,
+      # если репозиторий настолько большой, что упирается в лимиты Groq.
+      - AI_TRIAGE_MAX_FINDINGS=${AI_TRIAGE_MAX_FINDINGS:-0}
+      # Меньше находок за запрос: на каждую теперь отправляется больше кода,
+      # и крупный батч упирался бы в лимит токенов Groq.
+      - AI_TRIAGE_BATCH_SIZE=${AI_TRIAGE_BATCH_SIZE:-3}
+      - AI_RECON_ENABLED=${AI_RECON_ENABLED:-false}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_CALLBACK_URL=http://localhost:3000/api/auth/github/callback
+      - GITHUB_REVOKE_GRANT_ON_LOGOUT=${GITHUB_REVOKE_GRANT_ON_LOGOUT:-true}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET:-}
+      - CICD_BRANCHES=${CICD_BRANCHES:-main,master,develop}
+      # Значений по умолчанию нет намеренно: известный всем секрет подписи токенов
+      # и ключ шифрования означали бы, что любой может выпускать валидные токены
+      # и расшифровывать сохранённые токены GitHub. Без значения в .env запуск
+      # прервётся с понятным сообщением.
+      - JWT_SECRET=${JWT_SECRET:?задайте JWT_SECRET в .env}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?задайте ENCRYPTION_KEY в .env (ровно 32 символа)}
+      - WORKSPACES_ROOT=/tmp/kmg_workspaces
+      # A real semgrep+gitleaks+trivy run takes minutes; the old 60s client
+      # timeout aborted healthy scans and looked like "engine unreachable".
+      - SECURITY_ENGINE_TIMEOUT_MS=${SECURITY_ENGINE_TIMEOUT_MS:-600000}
+      - PREPUSH_ENGINE_TIMEOUT_MS=${PREPUSH_ENGINE_TIMEOUT_MS:-300000}
+      - AI_STAGE_BUDGET_MS=${AI_STAGE_BUDGET_MS:-480000}
+      # Общий секрет backend ↔ движок. Пусто = открытый режим (только для локальной разработки).
+      - ENGINE_TOKEN=${ENGINE_TOKEN:-}
+      - API_BODY_LIMIT=${API_BODY_LIMIT:-45mb}
+      - CI_ARCHIVE_LIMIT=${CI_ARCHIVE_LIMIT:-80mb}
+      - CI_MAX_ARCHIVE_BYTES=${CI_MAX_ARCHIVE_BYTES:-83886080}
+    ports:
+      - "3000:3000"
+    volumes:
+      - kmg-workspaces:/tmp/kmg_workspaces
+
+  security-engine:
+    build:
+      context: ./security-engine
+      dockerfile: Dockerfile
+    container_name: kmg-security-engine
+    restart: always
+    environment:
+      # Optional extra Semgrep rulesets ("auto", "p/default", ...). Empty means
+      # only the bundled offline ruleset in security-engine/rules is used.
+      - SEMGREP_RULES_DIRS=${SEMGREP_RULES_DIRS:-/app/rules,/opt/semgrep-rules}
+      - SEMGREP_REGISTRY_CONFIG=${SEMGREP_REGISTRY_CONFIG:-}
+      - SEMGREP_TIMEOUT_SECONDS=${SEMGREP_TIMEOUT_SECONDS:-600}
+      - GITLEAKS_TIMEOUT_SECONDS=${GITLEAKS_TIMEOUT_SECONDS:-180}
+      - TRIVY_TIMEOUT_SECONDS=${TRIVY_TIMEOUT_SECONDS:-300}
+      - ENGINE_TOKEN=${ENGINE_TOKEN:-}
+      # Сканировать можно только каталоги внутри общего тома рабочих областей.
+      - ENGINE_ALLOWED_ROOT=/tmp/kmg_workspaces
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    # POST /scan движка не требует авторизации и принимает произвольный
+    # repository_path, поэтому наружу порт не публикуется: backend обращается к
+    # нему по внутреннему имени security-engine:8000. Привязка к localhost
+    # оставлена только для запуска backend вне Docker.
+    ports:
+      - "127.0.0.1:8000:8000"
+    # Сканеры обрабатывают недоверенный код: минимум привилегий и потолок ресурсов.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: ${ENGINE_MEM_LIMIT:-4g}
+    cpus: ${ENGINE_CPUS:-2}
+    volumes:
+      - kmg-workspaces:/tmp/kmg_workspaces # Shared volume so it can access cloned repos
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kmg-frontend
+    restart: always
+    ports:
+      - "5173:80" # Mapping to port 80 since Nginx runs on 80
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  kmg-workspaces:

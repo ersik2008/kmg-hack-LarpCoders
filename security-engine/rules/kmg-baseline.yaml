@@ -1,0 +1,406 @@
+## KMG AI Security Agent — baseline Semgrep ruleset.
+##
+## These rules are executed by the real Semgrep engine and are bundled with the
+## image so a scan never depends on the Semgrep registry being reachable.
+## Registry rulesets can be added on top via SEMGREP_REGISTRY_CONFIG.
+##
+## `metadata.kmg_severity` is what the backend normalizer maps onto the
+## CRITICAL/HIGH/MEDIUM/LOW/INFO scale used by the policy engine.
+
+rules:
+  # ----------------------------------------------------------------- injection
+  - id: kmg-sql-injection-string-interpolation
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      SQL query is built with string interpolation/concatenation and passed to a
+      database driver. Attacker-controlled input reaches the SQL parser
+      (SQL injection). Use parameterised queries ($1 placeholders / prepared
+      statements) instead.
+    mode: taint
+    metadata:
+      kmg_severity: CRITICAL
+      category: security
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      owasp: "A03:2021 - Injection"
+    pattern-sources:
+      - pattern-regex: '`[^`]*\b(?i:select|insert\s+into|update|delete\s+from)\b[^`]*\$\{[^`]*`'
+      - pattern-regex: '"[^"]*\b(?i:select|insert\s+into|update|delete\s+from)\b[^"]*"\s*\+'
+    pattern-sinks:
+      - pattern-either:
+          - pattern: $DB.query(...)
+          - pattern: $DB.execute(...)
+          - pattern: $DB.exec(...)
+          - pattern: $DB.raw(...)
+          - pattern: $DB.$QUERY(...)
+
+  - id: kmg-command-injection-shell
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      OS command is assembled from a variable and executed through a shell.
+      An attacker controlling that value can run arbitrary commands
+      (command injection). Use execFile/spawn with an argument array and never
+      interpolate user input into a shell string.
+    metadata:
+      kmg_severity: CRITICAL
+      category: security
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      owasp: "A03:2021 - Injection"
+    patterns:
+      - pattern-either:
+          - pattern: exec(`...${$X}...`, ...)
+          - pattern: execSync(`...${$X}...`, ...)
+          - pattern: $CP.exec(`...${$X}...`, ...)
+          - pattern: $CP.execSync(`...${$X}...`, ...)
+          - pattern: exec($A + $B, ...)
+          - pattern: execSync($A + $B, ...)
+          - pattern: $CP.exec($A + $B, ...)
+          - pattern: $CP.execSync($A + $B, ...)
+
+  - id: kmg-dynamic-code-execution
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Dynamic code execution (eval / new Function). If any part of the evaluated
+      string is attacker-controlled this is remote code execution.
+    metadata:
+      kmg_severity: CRITICAL
+      category: security
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+      owasp: "A03:2021 - Injection"
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+      - pattern-not: eval()
+
+  - id: kmg-reflected-xss-response
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Unescaped request data is interpolated into an HTML response body
+      (reflected cross-site scripting). Escape the value or return JSON instead
+      of hand-built HTML.
+    mode: taint
+    metadata:
+      kmg_severity: HIGH
+      category: security
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+      owasp: "A03:2021 - Injection"
+    pattern-sources:
+      - pattern-either:
+          - pattern: $REQ.query
+          - pattern: $REQ.query.$P
+          - pattern: $REQ.body
+          - pattern: $REQ.body.$P
+          - pattern: $REQ.params.$P
+          - pattern: $REQ.headers.$P
+    pattern-sinks:
+      - pattern-either:
+          - pattern: $RES.send(`...`)
+          - pattern: $RES.write(`...`)
+          - pattern: $RES.end(`...`)
+          - pattern: $EL.innerHTML = $V
+          - pattern: $EL.outerHTML = $V
+          - pattern: document.write(...)
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: escape(...)
+          - pattern: escapeHtml(...)
+          - pattern: $X.escape(...)
+          - pattern: encodeURIComponent(...)
+          - pattern: sanitizeHtml(...)
+          - pattern: DOMPurify.sanitize(...)
+
+  # ------------------------------------------------------------ file & network
+  - id: kmg-path-traversal-file-read
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      A non-constant path segment is joined onto a base directory and read from
+      disk. A value such as "../../etc/passwd" escapes the intended directory
+      (path traversal). Resolve the path and verify it stays inside the base
+      directory, or use an allow-list of file names.
+    metadata:
+      kmg_severity: HIGH
+      category: security
+      cwe: "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      owasp: "A01:2021 - Broken Access Control"
+    patterns:
+      - pattern-either:
+          - pattern: fs.readFileSync(path.join(..., $VAR), ...)
+          - pattern: fs.readFile(path.join(..., $VAR), ...)
+          - pattern: fs.createReadStream(path.join(..., $VAR), ...)
+          - pattern: fs.promises.readFile(path.join(..., $VAR), ...)
+          - pattern: fs.readFileSync(path.resolve(..., $VAR), ...)
+          - pattern: fs.readFileSync($BASE + $VAR, ...)
+          - pattern: fs.createReadStream($BASE + $VAR, ...)
+      - pattern-not: fs.readFileSync(path.join(..., "..."), ...)
+      - pattern-not: fs.readFile(path.join(..., "..."), ...)
+      - pattern-not: fs.createReadStream(path.join(..., "..."), ...)
+
+  - id: kmg-path-traversal-indirect-file-read
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      A path built from a variable is read from disk without validation
+      (path traversal). Normalise the resolved path and check that it is still
+      inside the intended base directory.
+    mode: taint
+    metadata:
+      kmg_severity: HIGH
+      category: security
+      cwe: "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      owasp: "A01:2021 - Broken Access Control"
+    pattern-sources:
+      - pattern: path.join(..., $VAR)
+      - pattern: path.resolve(..., $VAR)
+    pattern-sinks:
+      - pattern-either:
+          - pattern: fs.readFileSync(...)
+          - pattern: fs.readFile(...)
+          - pattern: fs.createReadStream(...)
+          - pattern: fs.promises.readFile(...)
+          - pattern: fs.unlinkSync(...)
+          - pattern: fs.writeFileSync(...)
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: path.basename(...)
+          - pattern: path.join(..., "...")
+          - pattern: path.resolve(..., "...")
+
+  - id: kmg-ssrf-user-controlled-request
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      An outbound HTTP request is sent to a URL taken from a variable without an
+      allow-list or internal-address check (server-side request forgery). The
+      server can be used to reach internal services and cloud metadata endpoints.
+    metadata:
+      kmg_severity: HIGH
+      category: security
+      cwe: "CWE-918: Server-Side Request Forgery (SSRF)"
+      owasp: "A10:2021 - Server-Side Request Forgery"
+    patterns:
+      - pattern-either:
+          - pattern: fetch($URL, ...)
+          - pattern: axios($URL, ...)
+          - pattern: axios.get($URL, ...)
+          - pattern: axios.post($URL, ...)
+          - pattern: axios.put($URL, ...)
+          - pattern: 'axios.request({..., url: $URL, ...})'
+          - pattern: http.get($URL, ...)
+          - pattern: https.get($URL, ...)
+          - pattern: request($URL, ...)
+      - metavariable-regex:
+          metavariable: $URL
+          regex: '^(?!["''`]).*(?i:url|uri|endpoint|target|host|link|webhook|callback|address).*$'
+
+  # ------------------------------------------------------------------- crypto
+  - id: kmg-weak-hash-algorithm
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      Broken hash algorithm (MD5/SHA1) used. These are collision-prone and, for
+      passwords, far too fast. Use SHA-256+ for integrity and bcrypt/scrypt/
+      argon2/PBKDF2 for passwords.
+    metadata:
+      kmg_severity: MEDIUM
+      category: security
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+      owasp: "A02:2021 - Cryptographic Failures"
+    patterns:
+      - pattern-either:
+          - pattern: crypto.createHash("md5")
+          - pattern: crypto.createHash("sha1")
+          - pattern: crypto.createHash("MD5")
+          - pattern: crypto.createHash("SHA1")
+          - pattern: $C.createHash("md5")
+          - pattern: $C.createHash("sha1")
+
+  - id: kmg-insecure-randomness-for-secrets
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Math.random() is used to produce a security-sensitive value. It is a
+      predictable PRNG and must not generate tokens, keys, salts or passwords.
+      Use crypto.randomBytes()/crypto.randomUUID().
+    metadata:
+      kmg_severity: HIGH
+      category: security
+      cwe: "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator"
+      owasp: "A02:2021 - Cryptographic Failures"
+    patterns:
+      - pattern: Math.random()
+      - pattern-inside: |
+          function $F(...) { ... }
+      - metavariable-regex:
+          metavariable: $F
+          regex: '(?i).*(token|secret|key|password|passwd|nonce|otp|session|salt|auth|csrf).*'
+
+  # ------------------------------------------------------------ authentication
+  - id: kmg-jwt-decode-without-verification
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      JWT is decoded without verifying its signature. jwt.decode() accepts any
+      forged token — use jwt.verify(token, secret) before trusting the claims.
+    metadata:
+      kmg_severity: CRITICAL
+      category: security
+      cwe: "CWE-347: Improper Verification of Cryptographic Signature"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+    patterns:
+      - pattern-either:
+          - pattern: jwt.decode(...)
+          - pattern: $JWT.decode(...)
+      - pattern-not: $JWT.decode()
+
+  - id: kmg-jwt-hardcoded-secret
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      JWT signing secret is hardcoded in the source. Anyone with repository
+      access can mint valid tokens. Load it from configuration/secret storage.
+    metadata:
+      kmg_severity: CRITICAL
+      category: security
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+    pattern-either:
+      - pattern: jwt.sign($PAYLOAD, "...", ...)
+      - pattern: $JWT.sign($PAYLOAD, "...", ...)
+      - pattern: jwt.verify($TOKEN, "...", ...)
+
+  - id: kmg-jwt-algorithm-none
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      JWT configured with the "none" algorithm — signatures are not checked at
+      all. Pin an explicit algorithm such as HS256/RS256.
+    metadata:
+      kmg_severity: CRITICAL
+      category: security
+      cwe: "CWE-347: Improper Verification of Cryptographic Signature"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+    pattern-either:
+      - pattern: '{..., algorithm: "none", ...}'
+      - pattern: '{..., algorithms: [..., "none", ...], ...}'
+
+  # ------------------------------------------------------------- configuration
+  - id: kmg-cors-wildcard-with-credentials
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      CORS allows any origin ("*") while also allowing credentials. Any site can
+      then issue authenticated cross-origin requests on behalf of a logged-in
+      user. Pin an explicit origin allow-list.
+    metadata:
+      kmg_severity: HIGH
+      category: security
+      cwe: "CWE-942: Permissive Cross-domain Policy with Untrusted Domains"
+      owasp: "A05:2021 - Security Misconfiguration"
+    pattern-either:
+      - pattern: '{..., origin: "*", ..., credentials: true, ...}'
+      - pattern: '{..., credentials: true, ..., origin: "*", ...}'
+      - pattern: 'cors({..., origin: "*", ..., credentials: true, ...})'
+      - pattern: $RES.setHeader("Access-Control-Allow-Origin", "*")
+
+  - id: kmg-tls-verification-disabled
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      TLS certificate verification is disabled. All traffic on this connection
+      is trivially machine-in-the-middle-able.
+    metadata:
+      kmg_severity: HIGH
+      category: security
+      cwe: "CWE-295: Improper Certificate Validation"
+      owasp: "A02:2021 - Cryptographic Failures"
+    pattern-either:
+      - pattern: '{..., rejectUnauthorized: false, ...}'
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+
+  # ------------------------------------------------------------------- python
+  - id: kmg-python-command-injection
+    languages: [python]
+    severity: ERROR
+    message: >-
+      OS command executed through a shell with an interpolated value
+      (command injection). Use subprocess with an argument list and shell=False.
+    metadata:
+      kmg_severity: CRITICAL
+      category: security
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      owasp: "A03:2021 - Injection"
+    pattern-either:
+      - pattern: os.system(f"...")
+      - pattern: os.popen(f"...")
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+      - pattern: subprocess.check_output(..., shell=True, ...)
+
+  - id: kmg-python-dynamic-code-execution
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Dynamic code execution (eval/exec). Attacker-controlled input here is
+      remote code execution.
+    metadata:
+      kmg_severity: CRITICAL
+      category: security
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+      owasp: "A03:2021 - Injection"
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+
+  - id: kmg-python-insecure-deserialization
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Insecure deserialization (pickle / yaml.load without SafeLoader).
+      Deserialising untrusted data executes arbitrary code.
+    metadata:
+      kmg_severity: CRITICAL
+      category: security
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      owasp: "A08:2021 - Software and Data Integrity Failures"
+    pattern-either:
+      - pattern: pickle.loads(...)
+      - pattern: yaml.load($X)
+      - pattern: yaml.load($X, Loader=yaml.Loader)
+
+  - id: kmg-python-sql-injection
+    languages: [python]
+    severity: ERROR
+    message: >-
+      SQL statement built with string formatting/f-string and executed
+      (SQL injection). Use parameterised queries.
+    metadata:
+      kmg_severity: CRITICAL
+      category: security
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      owasp: "A03:2021 - Injection"
+    pattern-either:
+      - pattern: $CUR.execute(f"...")
+      - pattern: $CUR.execute("..." % ...)
+      - pattern: $CUR.execute("...".format(...))
+      - pattern: $CUR.executemany(f"...")
+
+  - id: kmg-python-weak-hash-algorithm
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Broken hash algorithm (MD5/SHA1). Use SHA-256+ for integrity and a
+      password KDF (bcrypt/scrypt/argon2/PBKDF2) for passwords.
+    metadata:
+      kmg_severity: MEDIUM
+      category: security
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+      owasp: "A02:2021 - Cryptographic Failures"
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)

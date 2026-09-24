@@ -1,0 +1,247 @@
+name: KMG AI Security Agent
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  security-events: write   # выгрузка SARIF в Code Scanning
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kmg_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kmg_test
+      NODE_ENV: test
+      JWT_SECRET: test-jwt-secret
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_MODEL: openai/gpt-oss-120b
+      ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ----- Backend -----
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Run Prisma Migrations
+        working-directory: backend
+        run: npx prisma migrate deploy
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm run test
+
+      # Проверяет коды завершения 0/1/2 и разграничение «локально — только
+      # информирование, в CI — блокировка». Это самая критичная для ТЗ часть
+      # поведения, и раньше она не запускалась ни одним прогоном.
+      - name: Run git guard tests
+        run: node --test tools/git-hooks/*.test.mjs
+
+      # ----- Python Security Engine -----
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        working-directory: security-engine
+        run: pip install -r requirements.txt
+
+      # ----- Install Security Scanners -----
+      - name: Install Semgrep
+        # pipx, not `pip install semgrep`: sharing an interpreter with the
+        # service requirements (pydantic is pinned there) breaks semgrep's
+        # imports and makes SAST silently never run.
+        run: |
+          pip install pipx
+          pipx install semgrep
+          semgrep --version
+
+      - name: Install Gitleaks
+        run: |
+          wget https://github.com/zricethezav/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
+          tar -xzf gitleaks_8.18.1_linux_x64.tar.gz
+          sudo mv gitleaks /usr/local/bin/
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      # ----- Self-Scan: Run Security Engine against THIS repo -----
+      - name: Start Security Engine
+        working-directory: security-engine
+        env:
+          # Движок сканирует только каталоги внутри этого корня.
+          ENGINE_ALLOWED_ROOT: ${{ github.workspace }}
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 3
+
+      - name: Run self-scan
+        run: |
+          HTTP_CODE=$(curl -s -o scan_results.json -w '%{http_code}' -X POST http://localhost:8000/scan \
+            -H 'Content-Type: application/json' \
+            -d '{"repository_path": "${{ github.workspace }}", "scan_id": "ci-${{ github.run_id }}"}')
+          echo "security-engine responded $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Проверка НЕ ВЫПОЛНЕНА (exit 2): security engine не завершил скан (HTTP $HTTP_CODE)."
+            cat scan_results.json || true
+            exit 2
+          fi
+
+      # This is the authoritative policy gate. It runs the same guard as the
+      # local hooks in `ci` mode: BLOCK exits 1, а незавершённая проверка или
+      # недоступный backend — 2 (ТЗ п. 4.3.3).
+      # Configure KMG_API_URL and KMG_TOKEN as repository secrets; missing
+      # credentials intentionally fail closed rather than silently skipping it.
+      - name: Enforce KMG AI security policy
+        uses: ./
+        with:
+          api-url: ${{ secrets.KMG_API_URL }}
+          token: ${{ secrets.KMG_TOKEN }}
+          block-on: policy
+          fail-open: 'false'
+          # ТЗ п. 4.4.1: проверяется проект целиком. Сквозные требования
+          # (единый слой журналирования, общий middleware аутентификации) по
+          # диффу коммита не устанавливаются в принципе.
+          paths: all
+
+      - name: Check local engine results
+        run: |
+          echo "=== Scan Results ==="
+          python3 -m json.tool < scan_results.json | head -100
+
+          # A scanner that did not complete must never be reported as a pass:
+          # "we could not check" is not "there is nothing to find".
+          #
+          # Коды завершения по ТЗ п. 4.3.3: незавершённый сканер — это код 2
+          # (проверка не выполнена), а не код 1 (выявлены нарушения). Разница
+          # существенна: во втором случае чинят код, в первом — инфраструктуру.
+          FAILED_SCANNERS=$(python3 -c "
+          import json
+          data = json.load(open('scan_results.json'))
+          bad = ['%s(%s)' % (n, r.get('status')) for n, r in data.get('scanners', {}).items() if r.get('status') not in ('COMPLETED', 'SKIPPED')]
+          print(' | '.join(bad))
+          ")
+          if [ -n "$FAILED_SCANNERS" ]; then
+            echo "::error::Проверка НЕ ВЫПОЛНЕНА (exit 2) — эти сканеры не завершились: $FAILED_SCANNERS"
+            exit 2
+          fi
+
+          # Каталог security-test-repository содержит НАМЕРЕННО уязвимые фикстуры
+          # (секреты, инъекции) для проверки самого агента; их находки не являются
+          # дефектами этого проекта и в подсчёт блокирующих не входят.
+          CRITICAL_COUNT=$(python3 -c "import json; d=json.load(open('scan_results.json')); print(len([f for f in d.get('findings',[]) if f.get('severity')=='CRITICAL' and not str(f.get('filePath') or '').startswith('security-test-repository/')]))")
+          if [ "$CRITICAL_COUNT" -gt "0" ]; then
+            echo "::error::Выявлены нарушения (exit 1): критических находок $CRITICAL_COUNT. Слияние заблокировано."
+            exit 1
+          fi
+          echo "Все сканеры завершены, критических находок нет. exit 0"
+
+      # ----- Frontend -----
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      # ----- Upload Artifacts -----
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results
+          path: scan_results.json
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('scan_results.json', 'utf8'));
+            const findings = results.findings || [];
+            const critical = findings.filter(f => f.severity === 'CRITICAL').length;
+            const high = findings.filter(f => f.severity === 'HIGH').length;
+            const medium = findings.filter(f => f.severity === 'MEDIUM').length;
+            const low = findings.filter(f => f.severity === 'LOW').length;
+
+            const scanners = results.scanners || {};
+            const brokenScanners = Object.entries(scanners)
+              .filter(([, rec]) => rec.status !== 'COMPLETED')
+              .map(([name, rec]) => `${name} (${rec.status})`);
+
+            const status = brokenScanners.length > 0
+              ? 'INCOMPLETE - verdict undetermined'
+              : critical > 0 ? 'BLOCKED' : high > 0 ? 'REVIEW' : 'PASSED';
+
+            const body = `## 🛡️ KMG Security Scan Results
+
+            | Severity | Count |
+            |----------|-------|
+            | 🔴 Critical | ${critical} |
+            | 🟠 High | ${high} |
+            | 🟡 Medium | ${medium} |
+            | 🔵 Low | ${low} |
+
+            **Status: ${status}**
+            **Total Findings: ${findings.length}**
+
+            **Scanners: ${Object.entries(scanners).map(([n, r]) => `${n}=${r.status}`).join(', ') || 'n/a'}**
+
+            ${brokenScanners.length > 0
+              ? `> Scan did NOT complete (${brokenScanners.join(', ')}). An empty finding list here does NOT mean the code is safe.`
+              : critical > 0
+                ? '> Critical findings detected. This PR is blocked until they are resolved.'
+                : '> No critical findings. Safe to merge.'}
+            `;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });

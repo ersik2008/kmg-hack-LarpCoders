@@ -1,0 +1,238 @@
+# ============================================================================
+#  KMG AI — автоматическая проверка безопасности
+#
+#  Положите этот файл в свой репозиторий как .github/workflows/ai-security.yml
+#
+#  Перед первым запуском добавьте два секрета:
+#    Settings → Secrets and variables → Actions → New repository secret
+#      KMG_API_URL  — адрес KMG, например https://kmg.example.com/api
+#      KMG_TOKEN    — токен сессии KMG (Настройки → Security → «Показать токен»)
+#
+#  Больше ничего настраивать не нужно: проверка запускается сама на каждый
+#  push и pull request, а находки прилетают во вкладку Security репозитория.
+# ============================================================================
+
+name: AI Security
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+  security-events: write   # обязательно: без этого SARIF не загрузится
+  pull-requests: write     # для комментария в PR
+
+jobs:
+  ai-security:
+    name: KMG AI Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Архив без мусора: иначе он раздувается до сотен мегабайт и анализ
+      # тратит время на чужие зависимости вместо вашего кода.
+      - name: Упаковать репозиторий
+        run: |
+          tar -czf /tmp/code.tar.gz \
+            --exclude='./.git' \
+            --exclude='./node_modules' \
+            --exclude='./**/node_modules' \
+            --exclude='./dist' \
+            --exclude='./build' \
+            --exclude='./.next' \
+            --exclude='./vendor' \
+            --exclude='./__pycache__' \
+            --exclude='./.venv' \
+            --exclude='./venv' \
+            --exclude='./target' \
+            --exclude='*.zip' --exclude='*.jar' --exclude='*.png' \
+            --exclude='*.jpg' --exclude='*.gif' --exclude='*.pdf' \
+            --exclude='*.mp4' --exclude='*.woff*' \
+            .
+          echo "Размер архива: $(du -h /tmp/code.tar.gz | cut -f1)"
+
+      - name: Отправить на анализ в KMG AI
+        id: scan
+        env:
+          KMG_API_URL: ${{ secrets.KMG_API_URL }}
+          KMG_TOKEN: ${{ secrets.KMG_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Без секретов проверку выполнить невозможно — это код 2 (ТЗ п. 4.3.3),
+          # а не «нарушений не найдено» и не «найдено нарушение».
+          if [ -z "$KMG_API_URL" ] || [ -z "$KMG_TOKEN" ]; then
+            echo "::error::Проверка НЕ ВЫПОЛНЕНА: не заданы секреты KMG_API_URL и KMG_TOKEN"
+            exit 2
+          fi
+
+          URL="${KMG_API_URL%/}/ci/scan"
+          URL="${URL}?repository=${{ github.repository }}"
+          URL="${URL}&repositoryId=${{ github.event.repository.id }}"
+          URL="${URL}&sha=${{ github.event.pull_request.head.sha || github.sha }}"
+          URL="${URL}&ref=${{ github.ref }}"
+          [ -n "$PR_NUMBER" ] && URL="${URL}&pr=${PR_NUMBER}"
+
+          echo "Отправляю код в KMG AI..."
+          HTTP_CODE=$(curl -sS -X POST "$URL" \
+            -H "Authorization: Bearer $KMG_TOKEN" \
+            -H "Content-Type: application/gzip" \
+            --data-binary @/tmp/code.tar.gz \
+            --max-time 900 \
+            -D /tmp/headers.txt \
+            -o results.sarif \
+            -w '%{http_code}')
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Проверка НЕ ВЫПОЛНЕНА: KMG вернул HTTP $HTTP_CODE"
+            head -c 2000 results.sarif || true
+            exit 2
+          fi
+
+          # Вердикт приходит в заголовках — SARIF для этого разбирать не нужно.
+          get_header() { grep -i "^$1:" /tmp/headers.txt | tail -1 | cut -d' ' -f2- | tr -d '\r'; }
+
+          VERDICT=$(get_header 'X-KMG-Verdict')
+          CRITICAL=$(get_header 'X-KMG-Critical')
+          HIGH=$(get_header 'X-KMG-High')
+          MEDIUM=$(get_header 'X-KMG-Medium')
+          LOW=$(get_header 'X-KMG-Low')
+          RISK=$(get_header 'X-KMG-Risk-Score')
+          FILES=$(get_header 'X-KMG-Files-Scanned')
+          AI=$(get_header 'X-KMG-Ai-Analysis')
+          # ТЗ п. 4.3.5: нарушенные требования и код завершения — в журнале шага.
+          VIOLATED=$(get_header 'X-KMG-Violated-Requirements')
+          INSUFFICIENT=$(get_header 'X-KMG-Insufficient-Requirements')
+          EXIT_CODE=$(get_header 'X-KMG-Exit-Code')
+          STARTED=$(get_header 'X-KMG-Started-At')
+          FINISHED=$(get_header 'X-KMG-Finished-At')
+          DURATION=$(get_header 'X-KMG-Duration-Seconds')
+
+          {
+            echo "verdict=${VERDICT:-UNKNOWN}"
+            echo "critical=${CRITICAL:-0}"
+            echo "high=${HIGH:-0}"
+            echo "medium=${MEDIUM:-0}"
+            echo "low=${LOW:-0}"
+            echo "risk=${RISK:-0}"
+            echo "violated=${VIOLATED}"
+            echo "exit_code=${EXIT_CODE}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## 🛡️ KMG AI — проверка безопасности"
+            echo ""
+            case "$VERDICT" in
+              PASS)       echo "✅ **Уязвимостей не найдено**" ;;
+              REVIEW)     echo "⚠️ **Требуется проверка** — найдены проблемы, но не критические" ;;
+              BLOCK)      echo "🛑 **Сборка остановлена** — найдены критические уязвимости" ;;
+              INCOMPLETE) echo "⚠️ **Проверка не завершена** — вердикт не вынесен. Пустой список находок здесь НЕ означает, что код безопасен." ;;
+              *)          echo "Вердикт: ${VERDICT:-неизвестен}" ;;
+            esac
+            echo ""
+            echo "| Уровень | Количество |"
+            echo "|---|---|"
+            echo "| 🔴 Critical | ${CRITICAL:-0} |"
+            echo "| 🟠 High | ${HIGH:-0} |"
+            echo "| 🟡 Medium | ${MEDIUM:-0} |"
+            echo "| 🔵 Low | ${LOW:-0} |"
+            echo ""
+            echo "Оценка риска: **${RISK:-—}/10** · Проверено файлов: **${FILES:-—}** · AI-разбор: **${AI:-false}**"
+            echo ""
+            echo "Подробности — во вкладке **Security → Code scanning**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Вердикт: $VERDICT (critical=$CRITICAL, high=$HIGH)"
+          echo "Код завершения по ТЗ: ${EXIT_CODE:-?}  |  начало: ${STARTED:-—}  |  конец: ${FINISHED:-—}  |  длительность: ${DURATION:-—} с"
+          if [ -n "$VIOLATED" ]; then
+            echo "::error::Нарушены обязательные требования ИБ: ${VIOLATED}"
+          fi
+          if [ -n "$INSUFFICIENT" ]; then
+            echo "::warning::Недостаточно данных для вывода по требованиям: ${INSUFFICIENT}"
+          fi
+
+      # Находки попадают во вкладку Security и аннотируются прямо на строках.
+      # if: always() — отчёт нужен особенно тогда, когда проверка провалилась.
+      - name: Загрузить SARIF в GitHub Code Scanning
+        if: always() && hashFiles('results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: kmg-ai-security
+
+      - name: Сохранить отчёт
+        if: always() && hashFiles('results.sarif') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: kmg-security-report
+          path: results.sarif
+
+      - name: Комментарий в pull request
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const v = '${{ steps.scan.outputs.verdict }}';
+            const header = {
+              PASS: '✅ **KMG AI: уязвимостей не найдено**',
+              REVIEW: '⚠️ **KMG AI: требуется проверка**',
+              BLOCK: '🛑 **KMG AI: слияние заблокировано — критические уязвимости**',
+              INCOMPLETE: '⚠️ **KMG AI: проверка не завершена, вердикт не вынесен**',
+            }[v] || `KMG AI: ${v || 'вердикт неизвестен'}`;
+
+            const body = [
+              header,
+              '',
+              `🔴 Critical **${{ steps.scan.outputs.critical }}** · ` +
+              `🟠 High **${{ steps.scan.outputs.high }}** · ` +
+              `🟡 Medium **${{ steps.scan.outputs.medium }}** · ` +
+              `🔵 Low **${{ steps.scan.outputs.low }}**`,
+              '',
+              `Оценка риска: **${{ steps.scan.outputs.risk }}/10**`,
+              '',
+              'Разбор каждой находки — во вкладке **Security → Code scanning**.',
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      # Шаг стоит последним: SARIF и комментарий уже опубликованы, и только
+      # после этого сборка падает. Так разработчик видит, ЧТО именно не так.
+      #
+      # Коды завершения по ТЗ п. 4.3.3:
+      #   0 — нарушений Требований ИБ не выявлено, пайплайн продолжается;
+      #   1 — выявлено одно или более нарушений, слияние и развёртывание блокируются;
+      #   2 — проверка НЕ ВЫПОЛНЕНА (сканер не завершился, модель недоступна,
+      #       превышены лимиты). Это не «чисто» и не «нарушение»: чинить нужно
+      #       инфраструктуру проверки, а не код.
+      - name: Проверить вердикт
+        if: always()
+        run: |
+          VERDICT="${{ steps.scan.outputs.verdict }}"
+          VIOLATED="${{ steps.scan.outputs.violated }}"
+          if [ -n "$VIOLATED" ]; then
+            echo "Нарушенные требования ИБ: ${VIOLATED}"
+          fi
+          case "$VERDICT" in
+            PASS|REVIEW)
+              echo "Проверка пройдена, нарушений не выявлено (вердикт: $VERDICT). exit 0"
+              exit 0
+              ;;
+            BLOCK)
+              echo "::error::Выявлены нарушения требований ИБ${VIOLATED:+: $VIOLATED}. Слияние и развёртывание заблокированы."
+              exit 1
+              ;;
+            INCOMPLETE)
+              echo "::error::Проверка НЕ ВЫПОЛНЕНА: сканирование не завершилось. Отсутствие находок НЕ означает, что код безопасен."
+              exit 2
+              ;;
+            *)
+              echo "::error::Проверка НЕ ВЫПОЛНЕНА: вердикт не получен (${VERDICT:-пусто}). Проверьте доступность KMG API и корректность секретов."
+              exit 2
+              ;;
+          esac

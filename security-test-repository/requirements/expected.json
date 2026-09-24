@@ -1,0 +1,23 @@
+{
+  "_comment": "Эталон для backend/test/requirements-fixtures.spec.ts. violating — проект, в котором нарушено каждое из требований ИБ-01…ИБ-08; compliant — тот же по составу проект с корректной реализацией. Файл — эталонная разметка в смысле п. 1.10 ТЗ, но подготовленная командой для самопроверки, а не Организатором.",
+  "violating": {
+    "ИБ-01": { "status": "VIOLATION", "file": "src/routes/admin.routes.ts" },
+    "ИБ-02": { "status": "VIOLATION" },
+    "ИБ-03": { "status": "VIOLATION", "file": "deploy/nginx.conf" },
+    "ИБ-04": { "status": "VIOLATION", "file": "src/auth/password.ts", "line": 5 },
+    "ИБ-05": { "status": "VIOLATION", "file": "src/logging/logger.ts" },
+    "ИБ-06": { "status": "VIOLATION", "file": "README.md" },
+    "ИБ-07": { "status": "VIOLATION" },
+    "ИБ-08": { "status": "VIOLATION", "file": "src/routes/export.routes.ts" }
+  },
+  "compliant": {
+    "ИБ-01": { "status": "PASS" },
+    "ИБ-02": { "status": "PASS" },
+    "ИБ-03": { "status": "PASS" },
+    "ИБ-04": { "status": "PASS" },
+    "ИБ-05": { "status": "PASS" },
+    "ИБ-06": { "status": "PASS" },
+    "ИБ-07": { "status": "PASS" },
+    "ИБ-08": { "status": "PASS" }
+  }
+}
