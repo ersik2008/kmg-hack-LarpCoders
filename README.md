@@ -68,31 +68,42 @@ curl http://localhost:8000/health
 
 Полная инструкция для воспроизведения — [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md).
 
-## Встраивание в CI/CD
+## Встраивание в CI/CD и Артефакты Отчётов
 
 Положите [examples/ai-security.yml](examples/ai-security.yml) в проверяемый
 репозиторий как `.github/workflows/ai-security.yml` и задайте два секрета:
 `KMG_API_URL` и `KMG_TOKEN`.
 
-Либо подключите composite action:
+В каждом запуске CI автоматически формируются и сохраняются следующие артефакты:
+- **`security-scan-results`**:
+  - `scan_results.json` — сырой машиночитаемый ответ сканеров.
+  - `kmg-self-scan-report.md` — наглядный отчёт для ИБ-специалиста в формате Markdown (ТЗ п. 4.6.1).
+- **`kmg-security-report`**:
+  - `kmg-report.md` — полный Markdown-отчёт по требованиям ИБ-01…ИБ-08.
+  - `kmg-scan-report.json` — структурированный JSON.
+  - `kmg-results.sarif` — стандартный формат SARIF 2.1.0 для GitHub Code Scanning.
 
-```yaml
-- uses: <owner>/<repository>@main
-  with:
-    api-url: ${{ secrets.KMG_API_URL }}
-    token: ${{ secrets.KMG_TOKEN }}
-```
-
-Подробно — [docs/CI_CD.md](docs/CI_CD.md).
-
-## Тесты
-
+Генерация отчёта вручную из локального лога:
 ```sh
-cd backend && npm ci && npm run test
-node --test tools/git-hooks/kmg-guard.test.mjs
+python tools/generate_md_report.py scan_results.json kmg-self-scan-report.md
 ```
 
-Результаты последнего прогона — [docs/TESTING.md](docs/TESTING.md).
+## Тесты и Проверка Состояния
+
+Проверка 175 интеграционных и модульных тестов бэкенда:
+```sh
+cd backend && npm ci && npx vitest run
+```
+
+Сборка интерфейса дашборда:
+```sh
+cd frontend && npm ci && npx vite build
+```
+
+Линтинг кода бэкенда:
+```sh
+cd backend && npx oxlint src/ test/
+```
 
 ## Документация
 
@@ -114,6 +125,7 @@ node --test tools/git-hooks/kmg-guard.test.mjs
 | [docs/LIMITATIONS.md](docs/LIMITATIONS.md) | ограничения решения |
 | [docs/TRACEABILITY.md](docs/TRACEABILITY.md) | матрица прослеживаемости ТЗ |
 | [docs/HACKATHON_COMPLIANCE.md](docs/HACKATHON_COMPLIANCE.md) | чек-лист соответствия ТЗ |
+| [docs/PITCH_CHEATSHEET.md](docs/PITCH_CHEATSHEET.md) | Шпаргалка для презентации и защиты перед жюри |
 
 ---
 
