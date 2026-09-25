@@ -1503,15 +1503,8 @@ const ScanDetails = () => {
                                       </div>
                                     )}
 
-                                    {aiExplanation.unavailableReason && (
-                                      <div style={{
-                                        fontSize: '0.78rem', color: '#fcd34d',
-                                        background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)',
-                                        borderRadius: '4px', padding: '0.5rem 0.75rem',
-                                      }}>
-                                        {aiExplanation.unavailableReason}
-                                      </div>
-                                    )}
+
+
 
                                     {aiExplanation.recommendedFix && (
                                       <div>

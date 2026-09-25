@@ -63,6 +63,10 @@ def _safe_line(value):
 def normalize_semgrep(raw_data: dict, scan_id: str, repo_path: str = "") -> list:
     findings = []
     results = (raw_data or {}).get('results', []) or []
+    matcher = None
+    if repo_path and os.path.isdir(repo_path):
+        from ..gitignore import GitIgnoreMatcher
+        matcher = GitIgnoreMatcher(repo_path)
 
     # Semgrep rule severity -> KMG scale. Rules may pin an explicit KMG severity
     # through metadata.kmg_severity (bundled ruleset does this for RCE/SQLi/...).
@@ -73,6 +77,10 @@ def normalize_semgrep(raw_data: dict, scan_id: str, repo_path: str = "") -> list
     }
 
     for r in results:
+        rel_path = _rel_path(r.get('path'), repo_path)
+        if matcher and matcher.is_ignored(rel_path):
+            continue
+
         extra = r.get('extra', {}) or {}
         metadata = extra.get('metadata', {}) or {}
 
@@ -98,7 +106,6 @@ def normalize_semgrep(raw_data: dict, scan_id: str, repo_path: str = "") -> list
             owasp = metadata['owasp']
             description_parts.append(f"OWASP: {', '.join(owasp) if isinstance(owasp, list) else owasp}")
 
-        rel_path = _rel_path(r.get('path'), repo_path)
         start_line = _safe_line((r.get('start') or {}).get('line'))
         end_line = _safe_line((r.get('end') or {}).get('line'))
 
@@ -125,9 +132,17 @@ def normalize_semgrep(raw_data: dict, scan_id: str, repo_path: str = "") -> list
 
 def normalize_gitleaks(raw_data: list, scan_id: str, repo_path: str = "") -> list:
     findings = []
+    matcher = None
+    if repo_path and os.path.isdir(repo_path):
+        from ..gitignore import GitIgnoreMatcher
+        matcher = GitIgnoreMatcher(repo_path)
 
     for r in raw_data or []:
         if not isinstance(r, dict):
+            continue
+
+        rel_path = _rel_path(r.get('File'), repo_path)
+        if matcher and matcher.is_ignored(rel_path):
             continue
 
         rule_id = r.get('RuleID') or r.get('Rule') or 'gitleaks-secret'
@@ -149,7 +164,7 @@ def normalize_gitleaks(raw_data: list, scan_id: str, repo_path: str = "") -> lis
             "confidence": "HIGH",
             "title": f"Exposed secret: {rule_id}",
             "description": " ".join(detail),
-            "filePath": _rel_path(r.get('File'), repo_path),
+            "filePath": rel_path,
             "startLine": _safe_line(r.get('StartLine')),
             "endLine": _safe_line(r.get('EndLine')),
             "codeSnippet": "***REDACTED***",  # Never expose raw secrets
@@ -161,6 +176,10 @@ def normalize_gitleaks(raw_data: list, scan_id: str, repo_path: str = "") -> lis
 def normalize_trivy(raw_data: dict, scan_id: str, repo_path: str = "") -> list:
     findings = []
     results = (raw_data or {}).get('Results', []) or []
+    matcher = None
+    if repo_path and os.path.isdir(repo_path):
+        from ..gitignore import GitIgnoreMatcher
+        matcher = GitIgnoreMatcher(repo_path)
 
     severity_map = {
         "CRITICAL": "CRITICAL",
@@ -172,6 +191,9 @@ def normalize_trivy(raw_data: dict, scan_id: str, repo_path: str = "") -> list:
 
     for res in results:
         target = _rel_path(res.get('Target', ''), repo_path)
+        if matcher and matcher.is_ignored(target):
+            continue
+
 
         # Vulnerabilities (dependencies)
         for vuln in res.get('Vulnerabilities', []) or []:

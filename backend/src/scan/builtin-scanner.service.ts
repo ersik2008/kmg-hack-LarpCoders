@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
+import { GitIgnoreMatcherTS } from '../common/utils/gitignore.util.js';
+
 export interface ScanFindingResult {
+
   scanner: string;
   ruleId: string;
   severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
@@ -170,7 +173,8 @@ export class BuiltinScannerService {
     const findings: ScanFindingResult[] = [];
 
     try {
-      await this.scanDirectory(workspacePath, workspacePath, findings);
+      const gitIgnoreMatcher = await GitIgnoreMatcherTS.create(workspacePath);
+      await this.scanDirectory(workspacePath, workspacePath, findings, gitIgnoreMatcher);
       this.logger.log(`[FALLBACK SCANNER] Scan finished. Findings detected: ${findings.length}`);
     } catch (err: any) {
       this.logger.error(`Error during fallback workspace scan: ${err.message}`);
@@ -179,15 +183,25 @@ export class BuiltinScannerService {
     return findings;
   }
 
-  private async scanDirectory(basePath: string, currentDir: string, findings: ScanFindingResult[]): Promise<void> {
+  private async scanDirectory(
+    basePath: string,
+    currentDir: string,
+    findings: ScanFindingResult[],
+    matcher?: GitIgnoreMatcherTS,
+  ): Promise<void> {
     const entries = await fs.readdir(currentDir, { withFileTypes: true });
 
     for (const entry of entries) {
       const fullPath = path.join(currentDir, entry.name);
+      const relPath = path.relative(basePath, fullPath).replace(/\\/g, '/');
+
+      if (matcher && matcher.isIgnored(relPath)) {
+        continue;
+      }
 
       if (entry.isDirectory()) {
         if (!IGNORED_DIRS.has(entry.name)) {
-          await this.scanDirectory(basePath, fullPath, findings);
+          await this.scanDirectory(basePath, fullPath, findings, matcher);
         }
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
@@ -197,6 +211,7 @@ export class BuiltinScannerService {
       }
     }
   }
+
 
   private async scanFile(basePath: string, filePath: string, findings: ScanFindingResult[]): Promise<void> {
     try {

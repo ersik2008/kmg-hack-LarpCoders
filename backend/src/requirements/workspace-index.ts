@@ -1,5 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { GitIgnoreMatcherTS } from '../common/utils/gitignore.util.js';
+
 
 /**
  * Индекс рабочей области для проверки Требований ИБ.
@@ -172,9 +174,11 @@ export class WorkspaceIndex {
 
   static async build(root: string): Promise<WorkspaceIndex> {
     const files: IndexedFile[] = [];
-    await walk(root, root, 0, files);
+    const matcher = await GitIgnoreMatcherTS.create(root);
+    await walk(root, root, 0, files, matcher);
     return new WorkspaceIndex(root, files);
   }
+
 
   get fileCount(): number {
     return this.files.length;
@@ -331,7 +335,13 @@ export class WorkspaceIndex {
   }
 }
 
-async function walk(root: string, dir: string, depth: number, out: IndexedFile[]): Promise<void> {
+async function walk(
+  root: string,
+  dir: string,
+  depth: number,
+  out: IndexedFile[],
+  matcher?: GitIgnoreMatcherTS,
+): Promise<void> {
   if (depth > MAX_DEPTH || out.length >= MAX_FILES) return;
 
   let entries;
@@ -344,12 +354,16 @@ async function walk(root: string, dir: string, depth: number, out: IndexedFile[]
   for (const entry of entries) {
     if (out.length >= MAX_FILES) return;
     const abs = path.join(dir, entry.name);
+    const rel = path.relative(root, abs).replace(/\\/g, '/');
+
+    if (matcher && matcher.isIgnored(rel)) continue;
 
     if (entry.isDirectory()) {
-      if (!IGNORED_DIRS.has(entry.name)) await walk(root, abs, depth + 1, out);
+      if (!IGNORED_DIRS.has(entry.name)) await walk(root, abs, depth + 1, out, matcher);
       continue;
     }
     if (!entry.isFile()) continue;
+
 
     let size = 0;
     try {

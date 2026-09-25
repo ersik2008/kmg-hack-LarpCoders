@@ -42,6 +42,18 @@ const STATUS_META = {
   NOT_APPLICABLE: { label: "Неприменимо", color: "#94a3b8", bg: "rgba(148,163,184,0.10)", border: "rgba(148,163,184,0.25)" },
 };
 
+const STATIC_REQUIREMENTS = [
+  { id: "ИБ-01", title: "Разграничение доступа к административному функционалу" },
+  { id: "ИБ-02", title: "Проверка сессии и токена на стороне сервера" },
+  { id: "ИБ-03", title: "Защита канала передачи данных" },
+  { id: "ИБ-04", title: "Криптографическая защита персональных данных при хранении" },
+  { id: "ИБ-05", title: "Защита локальных журналов приложения" },
+  { id: "ИБ-06", title: "Ссылки на нормативную базу в документации проекта" },
+  { id: "ИБ-07", title: "Журналирование действий пользователей и событий СУБД" },
+  { id: "ИБ-08", title: "Контроль выгрузки персональных данных" },
+];
+
+
 const SEVERITY_COLORS: Record<string, string> = {
   CRITICAL: "#f87171", HIGH: "#fb923c", MEDIUM: "#fbbf24", LOW: "#60a5fa",
 };
@@ -100,8 +112,39 @@ const IBRequirementsPanel = ({
           </p>
         </div>
         <div style={{ padding: "1.25rem 1.5rem", color: "var(--text-muted)", fontSize: "0.85rem", lineHeight: 1.5 }}>
-          Для данного сканирования результаты проверки требований ИБ еще не сформированы или скан был выполнен до их подключения.
-          Запустите новое сканирование репозитория, чтобы автоматически проверить соблюдение всех 8 обязательных требований ИБ.
+          <div style={{ marginBottom: "1.25rem" }}>
+            Для данного сканирования результаты проверки требований ИБ еще не сформированы или скан был выполнен до их подключения.
+            Запустите новое сканирование репозитория, чтобы автоматически проверить соблюдение всех 8 обязательных требований ИБ.
+          </div>
+          
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", background: "rgba(255,255,255,0.02)", borderRadius: "8px", overflow: "hidden" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--border-color)", textAlign: "left", background: "rgba(255,255,255,0.03)" }}>
+                <th style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>ID</th>
+                <th style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>Требование</th>
+                <th style={{ padding: "0.75rem 1rem", fontWeight: 600, textAlign: "right" }}>Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              {STATIC_REQUIREMENTS.map((req, i) => (
+                <tr key={req.id} style={{ borderBottom: i === STATIC_REQUIREMENTS.length - 1 ? 'none' : "1px solid var(--border-color)" }}>
+                  <td style={{ padding: "0.75rem 1rem", fontWeight: 600, color: "var(--primary)", width: "70px", verticalAlign: "top" }}>{req.id}</td>
+                  <td style={{ padding: "0.75rem 1rem", color: "var(--text-primary)", verticalAlign: "top" }}>{req.title}</td>
+                  <td style={{ padding: "0.75rem 1rem", width: "150px", textAlign: "right", verticalAlign: "top" }}>
+                    <span style={{ 
+                      fontSize: "0.7rem", fontWeight: 700, padding: "0.22rem 0.5rem", 
+                      borderRadius: "5px", background: "rgba(148,163,184,0.1)", 
+                      color: "#94a3b8", border: "1px solid rgba(148,163,184,0.25)",
+                      display: "inline-flex", alignItems: "center", gap: "4px"
+                    }}>
+                      <MinusCircle size={12} />
+                      Не проверено
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     );

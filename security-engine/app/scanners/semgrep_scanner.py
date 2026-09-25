@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from typing import Dict, Any, List
+from ..gitignore import GitIgnoreMatcher
 
 # Rule sets bundled with the image: the KMG baseline plus the official
 # open-source Semgrep security rules. They always work, with or without network
@@ -39,7 +40,6 @@ async def _run_semgrep_config(repo_path: str, configs: List[str]) -> Dict[str, A
         '-q',
         '--metrics', 'off',
         '--disable-version-check',
-        '--no-git-ignore',          # the workspace is a throwaway clone: scan everything
         '--timeout', SEMGREP_RULE_TIMEOUT,
     ]
     for cfg in configs:
@@ -124,12 +124,21 @@ IGNORED_DIRS = {
 
 def _has_analysable_code(root: str) -> bool:
     """True when the workspace contains at least one file Semgrep could analyse."""
+    matcher = GitIgnoreMatcher(root)
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in IGNORED_DIRS]
+        rel_dir = os.path.relpath(dirpath, root).replace('\\', '/')
+        if rel_dir == '.':
+            rel_dir = ''
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in IGNORED_DIRS and not matcher.is_ignored(f"{rel_dir}/{d}" if rel_dir else d)
+        ]
         for name in filenames:
-            if os.path.splitext(name)[1].lower() in CODE_EXTENSIONS:
+            rel_file = f"{rel_dir}/{name}" if rel_dir else name
+            if not matcher.is_ignored(rel_file) and os.path.splitext(name)[1].lower() in CODE_EXTENSIONS:
                 return True
     return False
+
 
 
 def _fatal_errors(data: Dict[str, Any]) -> List[str]:

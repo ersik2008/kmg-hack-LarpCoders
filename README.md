@@ -1,208 +1,303 @@
-# KMG AI Security Agent
+﻿# 🛡️ KMG AI Security Agent
 
-ИИ-агент для автоматизированной проверки функций информационной безопасности в
-процессе разработки программного обеспечения с интеграцией в CI/CD.
-
-Разработан для хакатона ТОО «KMG Digital» (г. Павлодар, 2026).
+> **ИИ-агент для автоматизированной проверки информационной безопасности в CI/CD**
+> Разработан для хакатона ТОО «KMG Digital» · г. Павлодар, 2026
 
 ---
 
-## Что делает
+## Что это
 
-Агент запускается отдельным шагом пайплайна по push-событию, анализирует
-репозиторий и возвращает в CI/CD детерминированный код завершения, по которому
-сборка продолжается или прерывается.
+KMG AI Security Agent — система, которая автоматически проверяет репозиторий на соответствие 8 обязательным требованиям ИБ (ТЗ п. 4.5) при каждом push-событии и либо пропускает, либо блокирует деплой.
 
 ```
-Git Push → CI/CD → Security Agent → анализ проекта → отчёт → вердикт → exit code
+git push
+  └─► GitHub Actions
+        └─► KMG Security Agent
+              ├─► Semgrep (SAST)
+              ├─► Gitleaks (секреты)
+              ├─► Trivy (зависимости)
+              └─► AI-анализ (Qwen 3.5 via Ollama по ИБ 01-08)
+                    └─► Отчёт + вердикт → exit code
 ```
 
-Анализ состоит из двух частей:
+**Коды завершения:**
 
-1. **Поиск дефектов** — Semgrep (SAST), Gitleaks (секреты), Trivy (зависимости и
-   конфигурация). Отвечает на вопрос «где в коде уязвимость».
-2. **Оценка функций ИБ** — детерминированный сбор признаков по коду и их оценка
-   языковой моделью. Отвечает на вопрос «реализован ли механизм защиты».
+| Код | Смысл | Пайплайн |
+|-----|-------|----------|
+| `0` | Нарушений не найдено | ✅ Продолжается |
+| `1` | Найдено ≥ 1 нарушения ИБ | ❌ Блокируется |
+| `2` | Ошибка агента (модель недоступна, таймаут) | ⚠️ Блокируется |
 
-Решение о блокировке пайплайна принимается **детерминированно**. Языковая модель
-объясняет и классифицирует находки, но не возвращает код завершения и не
-участвует в вычислении вердикта.
+---
 
-## Коды завершения
+## Быстрый старт
 
-| Код | Значение | Поведение пайплайна |
-|---|---|---|
-| `0` | Нарушений не выявлено | продолжается |
-| `1` | Выявлено одно или более нарушений | прерывается, слияние и развёртывание блокируются |
-| `2` | Проверка не выполнена (внутренняя ошибка, недоступность модели, превышение лимитов) | прерывается; результат не является ни «чисто», ни «нарушение» |
+### Требования
 
-Ключевое свойство: **вердикт `PASS` невозможен, если проверка не была выполнена
-полностью.** Незавершившийся сканер, неготовая рабочая область или отключённые
-сканеры дают код `2`, а не `0`.
+- Docker + Docker Compose
+- Git
+- GitHub OAuth App (для авторизации)
+- Ollama с моделью `qwen3.5:latest` (или Groq API ключ)
 
-## Состав решения
+### 1. Клонировать и настроить
 
-| Компонент | Технология | Назначение |
-|---|---|---|
-| [backend/](backend/) | NestJS 12, TypeScript | оркестрация анализа, политика, отчёты, интеграция с GitHub |
-| [security-engine/](security-engine/) | FastAPI, Python 3.11 | запуск Semgrep, Gitleaks, Trivy; нормализация находок |
-| [frontend/](frontend/) | React 19, Vite | интерфейс просмотра результатов |
-| [tools/git-hooks/](tools/git-hooks/) | Node.js | guard для CI и локальных git-хуков |
-| [action.yml](action.yml) | GitHub composite action | запуск проверки шагом пайплайна |
-| [examples/ai-security.yml](examples/ai-security.yml) | GitHub Actions | готовый workflow «под ключ» |
-
-## Быстрый запуск
-
-```sh
+```bash
 git clone <repository-url> kmg
 cd kmg
-cp .env.example .env     # заполнить GROQ_API_KEYS, JWT_SECRET, ENCRYPTION_KEY
+cp .env.example .env
+```
+
+### 2. Заполнить `.env`
+
+Откройте `.env` и заполните обязательные поля:
+
+```env
+# Пароль базы данных
+POSTGRES_PASSWORD=your_secure_password
+DATABASE_URL=postgresql://postgres:your_secure_password@localhost:5432/kmg
+
+# JWT (сгенерируйте: openssl rand -hex 32)
+JWT_SECRET=<32+ случайных символов>
+
+# Ключ шифрования (ровно 32 символа)
+ENCRYPTION_KEY=<32 символа>
+
+# GitHub OAuth App (создать на github.com/settings/developers)
+GITHUB_CLIENT_ID=<ваш client id>
+GITHUB_CLIENT_SECRET=<ваш client secret>
+
+# Вариант A: Ollama (локально)
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=qwen3.5:latest
+
+# Вариант B: Groq (облако)
+GROQ_API_KEY=<ваш groq api key>
+```
+
+### 3. Запустить
+
+```bash
 docker compose up --build
 ```
 
-Проверка готовности движка:
+> Первый запуск займёт 3–5 минут (скачивание образов, Prisma миграции).
 
-```sh
-curl http://localhost:8000/health
+### 4. Проверить работоспособность
+
+```bash
+curl http://localhost:8000/health   # Security Engine
+curl http://localhost:3000/api/health  # Backend API
 ```
 
-Полная инструкция для воспроизведения — [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md).
+### 5. Открыть интерфейс
 
-## Встраивание в CI/CD и Артефакты Отчётов
+Перейдите на `http://localhost:5173`, войдите через GitHub → добавьте репозиторий → запустите сканирование.
 
-Положите [examples/ai-security.yml](examples/ai-security.yml) в проверяемый
-репозиторий как `.github/workflows/ai-security.yml` и задайте два секрета:
-`KMG_API_URL` и `KMG_TOKEN`.
+---
 
-В каждом запуске CI автоматически формируются и сохраняются следующие артефакты:
-- **`security-scan-results`**:
-  - `scan_results.json` — сырой машиночитаемый ответ сканеров.
-  - `kmg-self-scan-report.md` — наглядный отчёт для ИБ-специалиста в формате Markdown (ТЗ п. 4.6.1).
-- **`kmg-security-report`**:
-  - `kmg-report.md` — полный Markdown-отчёт по требованиям ИБ-01…ИБ-08.
-  - `kmg-scan-report.json` — структурированный JSON.
-  - `kmg-results.sarif` — стандартный формат SARIF 2.1.0 для GitHub Code Scanning.
+## Архитектура
 
-Генерация отчёта вручную из локального лога:
-```sh
-python tools/generate_md_report.py scan_results.json kmg-self-scan-report.md
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Docker Compose                        │
+│                                                          │
+│  ┌─────────────┐   ┌─────────────┐   ┌───────────────┐  │
+│  │  Frontend   │   │   Backend   │   │Security Engine│  │
+│  │  React/Vite │◄──│  NestJS 12  │──►│  FastAPI/Py   │  │
+│  │  :5173      │   │  :3000      │   │  :8000        │  │
+│  └─────────────┘   └──────┬──────┘   └───────────────┘  │
+│                           │                              │
+│                    ┌──────▼──────┐                       │
+│                    │ PostgreSQL  │                       │
+│                    │  :5432      │                       │
+│                    └─────────────┘                       │
+└──────────────────────────────────────────────────────────┘
+         │                              │
+         ▼                              ▼
+    GitHub API                    Ollama / Groq
+    (репозитории)                 (AI анализ)
 ```
 
-## Тесты и Проверка Состояния
+| Компонент | Технологии | Назначение |
+|-----------|-----------|------------|
+| `frontend/` | React 19, Vite, TypeScript | Дашборд результатов |
+| `backend/` | NestJS 12, TypeScript, Prisma | API, оркестрация, политика |
+| `security-engine/` | FastAPI, Python 3.11 | Semgrep, Gitleaks, Trivy |
+| `action.yml` | GitHub composite action | CI/CD интеграция |
 
-Проверка 175 интеграционных и модульных тестов бэкенда:
-```sh
-cd backend && npm ci && npx vitest run
+---
+
+## Интеграция в CI/CD
+
+### Быстрое подключение
+
+```bash
+mkdir -p .github/workflows
+cp examples/ai-security.yml .github/workflows/ai-security.yml
 ```
 
-Сборка интерфейса дашборда:
-```sh
-cd frontend && npm ci && npx vite build
+Добавьте секреты в **Settings → Secrets and variables → Actions**:
+
+| Секрет | Значение |
+|--------|----------|
+| `KMG_API_URL` | URL бэкенда, например `https://your-kmg.example.com` |
+| `KMG_TOKEN` | API-токен пользователя из настроек профиля |
+
+Артефакты после каждого прогона:
+- `kmg-report.md` — читаемый Markdown-отчёт для специалиста ИБ
+- `kmg-scan-report.json` — машиночитаемый JSON
+- `kmg-results.sarif` — SARIF 2.1.0 для GitHub Code Scanning
+
+---
+
+## Проверяемые требования ИБ (ТЗ п. 4.5)
+
+| ID | Требование | Метод проверки |
+|----|-----------|----------------|
+| **ИБ-01** | Разграничение доступа к административному функционалу | AI + статический анализ |
+| **ИБ-02** | Проверка сессии и токена на стороне сервера | Semgrep + AI |
+| **ИБ-03** | Защита канала передачи данных (TLS ≥ 1.2) | Анализ конфигурации |
+| **ИБ-04** | Криптозащита персональных данных (bcrypt/argon2/scrypt) | Gitleaks + AI |
+| **ИБ-05** | Защита локальных журналов приложения | AI-анализ кода |
+| **ИБ-06** | Ссылки на нормативную базу в документации | Поиск по документам |
+| **ИБ-07** | Журналирование действий пользователей и событий СУБД | AI (сквозное) |
+| **ИБ-08** | Контроль выгрузки персональных данных | AI + RBAC-анализ |
+
+---
+
+## Конфигурация AI
+
+### Ollama (рекомендуется)
+
+```env
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=qwen3.5:latest
 ```
 
-Линтинг кода бэкенда:
-```sh
-cd backend && npx oxlint src/ test/
+```bash
+ollama pull qwen3.5:latest
 ```
+
+### Groq (облачная альтернатива)
+
+```env
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=openai/gpt-oss-120b
+```
+
+Получить ключ: [console.groq.com](https://console.groq.com)
+
+---
+
+## Локальная разработка
+
+```bash
+# Security Engine
+cd security-engine && pip install -r requirements.txt
+uvicorn app.main:app --port 8000
+
+# Backend
+cd backend && npm install && npx prisma migrate dev && npm run start:dev
+
+# Frontend
+cd frontend && npm install && npm run dev
+```
+
+### Тесты
+
+```bash
+cd backend && npm ci && npx vitest run     # Unit + integration тесты
+cd backend && npx oxlint src/ test/       # Линтер
+cd frontend && npm ci && npx vite build   # Сборка фронтенда
+```
+
+---
+
+## Структура проекта
+
+```
+kmg/
+├── backend/                 # NestJS API сервер
+│   ├── src/
+│   │   ├── ai/             # Интеграция с Ollama / Groq
+│   │   ├── scan/           # Логика сканирования
+│   │   ├── agent/          # AI агент (расследование)
+│   │   ├── requirements/   # Проверка ИБ-01…ИБ-08
+│   │   ├── ci/             # CI/CD интеграция
+│   │   └── auth/           # GitHub OAuth
+│   └── Dockerfile
+├── frontend/                # React дашборд
+│   └── src/
+│       ├── pages/          # ScanDetails, Dashboard
+│       └── components/     # IBRequirementsPanel и др.
+├── security-engine/         # Python FastAPI + сканеры
+│   └── app/
+│       ├── scanners/       # Semgrep, Gitleaks, Trivy
+│       └── normalizers/    # Нормализация находок
+├── tools/                   # Вспомогательные утилиты
+├── examples/               # Готовые workflow для GitHub Actions
+├── docs/                   # Полная документация
+├── action.yml              # GitHub composite action
+├── docker-compose.yml
+└── .env.example
+```
+
+---
 
 ## Документация
 
-| Документ | Содержание |
-|---|---|
-| [docs/README.md](docs/README.md) | индекс документации |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | компоненты, входы, выходы, диаграммы |
-| [docs/ANALYSIS_PIPELINE.md](docs/ANALYSIS_PIPELINE.md) | жизненный цикл проверки |
-| [docs/SECURITY_REQUIREMENTS.md](docs/SECURITY_REQUIREMENTS.md) | матрица требований ИБ-01…ИБ-08 |
-| [docs/CONTEXT_ANALYSIS.md](docs/CONTEXT_ANALYSIS.md) | работа с ограничением контекста модели |
-| [docs/LLM.md](docs/LLM.md) | слой языковой модели, защита от галлюцинаций и инъекций |
-| [docs/CI_CD.md](docs/CI_CD.md) | интеграция, коды завершения, артефакты |
-| [docs/REPORT_FORMAT.md](docs/REPORT_FORMAT.md) | схемы JSON, SARIF, Markdown |
-| [docs/DECISION_ENGINE.md](docs/DECISION_ENGINE.md) | детерминированная политика |
-| [docs/TESTING.md](docs/TESTING.md) | тесты и результаты прогона |
-| [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | инструкция воспроизведения |
-| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | лимиты времени и ресурсов |
-| [docs/SECURITY.md](docs/SECURITY.md) | безопасность самого агента |
-| [docs/LIMITATIONS.md](docs/LIMITATIONS.md) | ограничения решения |
-| [docs/TRACEABILITY.md](docs/TRACEABILITY.md) | матрица прослеживаемости ТЗ |
-| [docs/HACKATHON_COMPLIANCE.md](docs/HACKATHON_COMPLIANCE.md) | чек-лист соответствия ТЗ |
-| [docs/PITCH_CHEATSHEET.md](docs/PITCH_CHEATSHEET.md) | Шпаргалка для презентации и защиты перед жюри |
+| Документ | Что внутри |
+|----------|-----------| 
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Компоненты, диаграммы, потоки данных |
+| [docs/ANALYSIS_PIPELINE.md](docs/ANALYSIS_PIPELINE.md) | Жизненный цикл проверки |
+| [docs/SECURITY_REQUIREMENTS.md](docs/SECURITY_REQUIREMENTS.md) | Матрица ИБ-01…ИБ-08 |
+| [docs/CI_CD.md](docs/CI_CD.md) | Интеграция, коды завершения, артефакты |
+| [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | Полная инструкция воспроизведения |
+| [docs/DECISION_ENGINE.md](docs/DECISION_ENGINE.md) | Детерминированная политика вердикта |
+| [docs/LLM.md](docs/LLM.md) | AI слой, защита от галлюцинаций |
+| [docs/REPORT_FORMAT.md](docs/REPORT_FORMAT.md) | Схемы JSON, SARIF, Markdown |
+| [docs/HACKATHON_COMPLIANCE.md](docs/HACKATHON_COMPLIANCE.md) | Чек-лист соответствия ТЗ |
+| [docs/PITCH_CHEATSHEET.md](docs/PITCH_CHEATSHEET.md) | Шпаргалка для презентации жюри |
 
 ---
 
 ## Нормативная база
 
-При разработке агента и формулировании проверяемых Требований ИБ учитываются
-следующие нормативные правовые акты и стандарты Республики Казахстан:
+Агент проверяет соответствие следующим нормативным актам РК:
 
-1. **Закон Республики Казахстан от 24 ноября 2015 года № 418-V
-   «О кибербезопасности»** — общие требования к обеспечению кибербезопасности
-   информационных систем.
+1. **Закон РК № 418-V от 24.11.2015** «О кибербезопасности»
+2. **Закон РК № 94-V от 21.05.2013** «О персональных данных и их защите»
+3. **Постановление Правительства РК № 832 от 20.12.2016** — единые требования в области ИКТ и ИБ
+4. **СТ РК ISO/IEC 27001-2023** — системы менеджмента информационной безопасности
+5. **СТ РК ISO/IEC 27002-2023** — средства управления ИБ
+6. **СТ РК 1073-2007** — криптографическая защита информации
 
-2. **Закон Республики Казахстан от 21 мая 2013 года № 94-V «О персональных
-   данных и их защите»** (в действующей редакции) — требования к обработке,
-   хранению и защите персональных данных. Применяется к требованиям
-   [ИБ-04](docs/SECURITY_REQUIREMENTS.md#иб-04) (криптографическая защита
-   персональных данных при хранении) и
-   [ИБ-08](docs/SECURITY_REQUIREMENTS.md#иб-08) (контроль выгрузки персональных
-   данных).
+---
 
-3. **Единые требования в области информационно-коммуникационных технологий и
-   обеспечения информационной безопасности**, утверждённые постановлением
-   Правительства Республики Казахстан от 20 декабря 2016 года № 832
-   (в действующей редакции) — требования к разграничению доступа,
-   журналированию и защите каналов передачи данных. Применяются к требованиям
-   [ИБ-01](docs/SECURITY_REQUIREMENTS.md#иб-01),
-   [ИБ-02](docs/SECURITY_REQUIREMENTS.md#иб-02),
-   [ИБ-03](docs/SECURITY_REQUIREMENTS.md#иб-03),
-   [ИБ-07](docs/SECURITY_REQUIREMENTS.md#иб-07).
+## FAQ
 
-4. **СТ РК ISO/IEC 27001-2023** «Информационная безопасность, кибербезопасность
-   и защита конфиденциальности. Системы менеджмента информационной безопасности.
-   Требования».
+**Q: Ollama недоступна из контейнера?**
+Используйте `host.docker.internal` вместо `localhost` в `OLLAMA_BASE_URL`.
 
-5. **СТ РК ISO/IEC 27002-2023** «Информационная безопасность, кибербезопасность
-   и защита конфиденциальности. Средства управления информационной
-   безопасностью».
+**Q: Ошибки 429 Too Many Requests?**
+Лимит по умолчанию 600 запросов/мин. Изменить: `backend/src/app.module.ts` → `limit`.
 
-6. **СТ РК 1073-2007** «Средства криптографической защиты информации. Общие
-   технические требования» — в части уровня криптографической защиты,
-   применяемого при хранении и передаче персональных данных. Определяет
-   требования к [ИБ-04](docs/SECURITY_REQUIREMENTS.md#иб-04): пароли должны
-   храниться в виде значений функций формирования ключа bcrypt, argon2 или
-   scrypt; хранение в открытом виде либо с применением быстрых хеш-функций
-   общего назначения без адаптивного алгоритма является нарушением.
+**Q: Как обновить бэкенд после правок?**
+```bash
+docker compose up -d --build backend
+```
 
-Наличие ссылок на перечисленные акты и стандарты в документации проверяемого
-проекта является предметом проверки в соответствии с требованием
-[ИБ-06](docs/SECURITY_REQUIREMENTS.md#иб-06). Фактическое прохождение
-сертификации, проведение испытаний в аккредитованной лаборатории и иные
-подтверждающие процедуры не требуются.
+**Q: Где смотреть логи?**
+```bash
+docker logs kmg-backend --tail 50 -f
+docker logs kmg-security-engine --tail 50 -f
+```
 
-В случае изменения, замены или отмены указанных актов и стандартов применяются
-их действующие редакции в части, применимой к предмету проверки.
+**Q: Как добавить своё правило Semgrep?**
+Добавьте `.yaml` в `security-engine/rules/` и перезапустите engine.
 
-## Проверяемые требования ИБ
+---
 
-| ID | Требование |
-|---|---|
-| [ИБ-01](docs/SECURITY_REQUIREMENTS.md#иб-01) | Разграничение доступа к административному функционалу |
-| [ИБ-02](docs/SECURITY_REQUIREMENTS.md#иб-02) | Проверка сессии и токена на стороне сервера |
-| [ИБ-03](docs/SECURITY_REQUIREMENTS.md#иб-03) | Защита канала передачи данных |
-| [ИБ-04](docs/SECURITY_REQUIREMENTS.md#иб-04) | Криптографическая защита персональных данных при хранении |
-| [ИБ-05](docs/SECURITY_REQUIREMENTS.md#иб-05) | Защита локальных журналов приложения |
-| [ИБ-06](docs/SECURITY_REQUIREMENTS.md#иб-06) | Ссылки на нормативную базу в документации проекта |
-| [ИБ-07](docs/SECURITY_REQUIREMENTS.md#иб-07) | Журналирование действий пользователей и событий СУБД |
-| [ИБ-08](docs/SECURITY_REQUIREMENTS.md#иб-08) | Контроль выгрузки персональных данных |
-
-Текущее состояние реализации проверки каждого требования —
-[docs/SECURITY_REQUIREMENTS.md](docs/SECURITY_REQUIREMENTS.md) и
-[docs/HACKATHON_COMPLIANCE.md](docs/HACKATHON_COMPLIANCE.md).
-
-## Ограничения
-
-Агент выполняет статический анализ: он делает выводы о коде и конфигурации по их
-тексту, не запуская приложение. Наличие или отсутствие механизма защиты в коде
-устанавливается; корректность его работы во время выполнения без динамического
-тестирования не доказывается.
-
-Полный перечень — [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+<div align="center">
+  <sub>Сделано с ❤️ и 🛡️ командой <b>LarpCoders</b> · KMG Digital Hackathon 2026</sub>
+</div>

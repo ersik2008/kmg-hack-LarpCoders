@@ -8,8 +8,10 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as os from 'os';
+import { GitIgnoreMatcherTS } from '../common/utils/gitignore.util.js';
 
 const execFileAsync = promisify(execFile);
+
 
 export interface CloneResult {
   workspacePath: string;
@@ -103,6 +105,35 @@ export class RepositoryService {
       return path.join(baseDir, `scan-${scanId}`, 'repository');
     }
     return path.join(baseDir, userId, repoId);
+  }
+
+  getCiWorkspacePath(scanId: string): string {
+    const baseDir = this.configService.get<string>('WORKSPACES_ROOT') || path.join(os.tmpdir(), 'kmg_workspaces');
+    return path.join(baseDir, `ci-${scanId}`, 'repository');
+  }
+
+  /**
+   * Возвращает реальный путь к рабочей области скана, пробуя доступные варианты:
+   * • `scan-<scanId>/repository` — ручное сканирование через GitHub OAuth
+   * • `ci-<scanId>/repository`   — архив из GitHub Actions
+   * Если ни один не существует, возвращает стандартный `scan-` путь.
+   */
+  async resolveWorkspacePath(userId: string, repoId: string, scanId: string): Promise<string> {
+    const scanPath = this.getWorkspacePath(userId, repoId, scanId);
+    try {
+      await import('fs/promises').then(fs => fs.access(scanPath));
+      return scanPath;
+    } catch {
+      /* not found under scan- prefix, try ci- */
+    }
+    const ciPath = this.getCiWorkspacePath(scanId);
+    try {
+      await import('fs/promises').then(fs => fs.access(ciPath));
+      return ciPath;
+    } catch {
+      /* neither exists — return the default so caller gets a meaningful error */
+    }
+    return scanPath;
   }
 
   async cloneRepository(userId: string, repoId: string, scanId?: string, branch?: string): Promise<string> {
@@ -228,13 +259,22 @@ export class RepositoryService {
 
   private async countSourceFiles(dir: string): Promise<number> {
     let count = 0;
+    const matcher = await GitIgnoreMatcherTS.create(dir);
+
     const walk = async (currentDir: string) => {
       try {
         const entries = await fs.readdir(currentDir, { withFileTypes: true });
         for (const entry of entries) {
+          const fullPath = path.join(currentDir, entry.name);
+          const relPath = path.relative(dir, fullPath).replace(/\\/g, '/');
+
+          if (matcher.isIgnored(relPath)) {
+            continue;
+          }
+
           if (entry.isDirectory()) {
             if (!IGNORED_DIRECTORIES.has(entry.name)) {
-              await walk(path.join(currentDir, entry.name));
+              await walk(fullPath);
             }
           } else if (entry.isFile()) {
             count++;
@@ -245,6 +285,7 @@ export class RepositoryService {
     await walk(dir);
     return count;
   }
+
 
   async cleanupWorkspace(userId: string, repoId: string, scanId?: string): Promise<void> {
     const workspacePath = this.getWorkspacePath(userId, repoId, scanId);

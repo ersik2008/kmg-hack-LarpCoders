@@ -1,6 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import * as http from 'http';
+import * as https from 'https';
 
 export interface OllamaResult<T> {
   ok: boolean;
@@ -176,8 +178,6 @@ export class OllamaService implements OnModuleInit {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        // OpenAI-compatible JSON mode
-        response_format: { type: 'json_object' },
         temperature: 0.1,
         stream: false,
       },
@@ -185,7 +185,12 @@ export class OllamaService implements OnModuleInit {
     );
 
     if (!result.ok) return result;
-    const content = result.data?.choices?.[0]?.message?.content;
+    let content: string = result.data?.choices?.[0]?.message?.content ?? '';
+
+    // Убираем блоки <think>...</think>, которые модель иногда вставляет
+    // в content даже при think:false (переходный период прошивки Ollama)
+    content = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
     if (!content) return { ok: false, error: 'модель вернула пустой ответ' };
 
     // Извлекаем от первой { до последней }
@@ -221,7 +226,9 @@ export class OllamaService implements OnModuleInit {
     );
 
     if (!result.ok) throw new Error('Ollama analysis failed: ' + result.error);
-    const content = result.data?.choices?.[0]?.message?.content;
+    let content: string = result.data?.choices?.[0]?.message?.content ?? '';
+    // Убираем блоки <think>...</think>
+    content = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     if (!content)
       throw new Error('Ollama analysis failed: модель вернула пустой ответ');
     return content;
@@ -318,6 +325,13 @@ export class OllamaService implements OnModuleInit {
 
   // ─── Internal ────────────────────────────────────────────────────────────────
 
+  /**
+   * HTTP-агент с keep-alive, чтобы не открывать новый TCP-сокет на каждый
+   * запрос. Это снижает вероятность ECONNRESET при долгих генерациях.
+   */
+  private readonly httpAgent = new http.Agent({ keepAlive: true, maxSockets: 4 });
+  private readonly httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 4 });
+
   private async requestChat<T>(
     body: Record<string, unknown>,
     timeout: number,
@@ -329,29 +343,63 @@ export class OllamaService implements OnModuleInit {
       };
     }
 
+    return this.doRequest<T>(body, timeout, /* isRetry */ false);
+  }
+
+  private async doRequest<T>(
+    body: Record<string, unknown>,
+    timeout: number,
+    isRetry: boolean,
+  ): Promise<OllamaResult<T>> {
     try {
       const response = await axios.post<T>(this.chatUrl, body, {
         headers: { 'Content-Type': 'application/json' },
         timeout,
+        httpAgent: this.httpAgent,
+        httpsAgent: this.httpsAgent,
       });
       return { ok: true, data: response.data };
     } catch (error) {
       const msg = this.errorMessage(error);
-      this.logger.warn('Ollama request failed: ' + msg);
-      // Если сервер упал — помечаем как недоступный и планируем переподключение
-      if (this.isNetworkError(error)) {
+      this.logger.warn(`Ollama request failed${isRetry ? ' (retry)' : ''}: ${msg}`);
+
+      if (this.isTransientError(error)) {
+        // ECONNRESET и подобные — соединение сбросилось, но Ollama жива.
+        // Повторяем один раз с небольшой паузой.
+        if (!isRetry) {
+          this.logger.log('Ollama transient error, retrying once in 2s...');
+          await new Promise(r => setTimeout(r, 2_000));
+          return this.doRequest<T>(body, timeout, /* isRetry */ true);
+        }
+        // После второй неудачи — не помечаем как недоступный, просто возвращаем ошибку.
+        return { ok: false, error: msg };
+      }
+
+      if (this.isFatalNetworkError(error)) {
+        // ECONNREFUSED / EAI_AGAIN — сервер реально недостижим.
         this.available = false;
         this.scheduleRetry();
       }
+
       return { ok: false, error: msg };
     }
   }
 
-  private isNetworkError(error: unknown): boolean {
+  /**
+   * Transient-ошибки: соединение сбросилось в процессе, но сервер жив.
+   * Retry имеет смысл.
+   */
+  private isTransientError(error: unknown): boolean {
     const code = (error as any)?.code;
-    return ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN'].includes(
-      code,
-    );
+    return ['ECONNRESET', 'EPIPE', 'ENOTFOUND'].includes(code);
+  }
+
+  /**
+   * Fatal-ошибки: сервер недостижим вообще. Помечаем как unavailable.
+   */
+  private isFatalNetworkError(error: unknown): boolean {
+    const code = (error as any)?.code;
+    return ['ECONNREFUSED', 'EAI_AGAIN', 'ETIMEDOUT'].includes(code);
   }
 
   private errorMessage(error: unknown): string {

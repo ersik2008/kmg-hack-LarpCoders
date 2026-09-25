@@ -742,7 +742,7 @@ export class ScanService {
       };
     }
 
-    const workspacePath = this.repositoryService.getWorkspacePath(userId, scan.repositoryId, scanId);
+    const workspacePath = await this.repositoryService.resolveWorkspacePath(userId, scan.repositoryId, scanId);
     try {
       const arch = await this.architectureService.analyzeWorkspace(workspacePath);
       return {
@@ -779,7 +779,7 @@ export class ScanService {
       };
     }
 
-    const workspacePath = this.repositoryService.getWorkspacePath(userId, scan.repositoryId, scanId);
+    const workspacePath = await this.repositoryService.resolveWorkspacePath(userId, scan.repositoryId, scanId);
     try {
       const arch = await this.architectureService.analyzeWorkspace(workspacePath);
       return {
@@ -796,7 +796,7 @@ export class ScanService {
 
   async getScanFileContent(userId: string, scanId: string, filePath: string) {
     const scan = await this.getScanById(userId, scanId);
-    let workspacePath = this.repositoryService.getWorkspacePath(userId, scan.repositoryId, scanId);
+    const workspacePath = await this.repositoryService.resolveWorkspacePath(userId, scan.repositoryId, scanId);
 
     try {
       return await this.architectureService.readFileContent(workspacePath, filePath);

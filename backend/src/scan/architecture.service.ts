@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { GitIgnoreMatcherTS } from '../common/utils/gitignore.util.js';
+
 
 export interface FileNode {
   name: string;
@@ -114,7 +116,9 @@ export class ArchitectureService {
     let linesCount = 0;
 
     // 1. Recursive file collection
-    await this.walkDir(workspacePath, workspacePath, rawFiles);
+    const matcher = await GitIgnoreMatcherTS.create(workspacePath);
+    await this.walkDir(workspacePath, workspacePath, rawFiles, matcher);
+
 
     // 2. Build Tree & Count Lines
     for (const file of rawFiles) {
@@ -178,21 +182,31 @@ export class ArchitectureService {
     };
   }
 
-  private async walkDir(basePath: string, currentDir: string, list: { relPath: string; fullPath: string; ext: string; size: number }[]) {
+  private async walkDir(
+    basePath: string,
+    currentDir: string,
+    list: { relPath: string; fullPath: string; ext: string; size: number }[],
+    matcher?: GitIgnoreMatcherTS,
+  ) {
     if (list.length >= 800) return; // Cap to reasonable size for performance
 
     try {
       const entries = await fs.readdir(currentDir, { withFileTypes: true });
       for (const entry of entries) {
+        const fullPath = path.join(currentDir, entry.name);
+        const relPath = path.relative(basePath, fullPath).replace(/\\/g, '/');
+
+        if (matcher && matcher.isIgnored(relPath)) {
+          continue;
+        }
+
         if (entry.isDirectory()) {
           if (!IGNORED_DIRS.has(entry.name)) {
-            await this.walkDir(basePath, path.join(currentDir, entry.name), list);
+            await this.walkDir(basePath, fullPath, list, matcher);
           }
         } else if (entry.isFile()) {
-          const fullPath = path.join(currentDir, entry.name);
           try {
             const stat = await fs.stat(fullPath);
-            const relPath = path.relative(basePath, fullPath).replace(/\\/g, '/');
             const ext = path.extname(entry.name).toLowerCase();
             list.push({ relPath, fullPath, ext, size: stat.size });
           } catch {}
@@ -200,6 +214,7 @@ export class ArchitectureService {
       }
     } catch {}
   }
+
 
   private buildTreeHierarchy(files: { relPath: string; size: number }[]): FileNode[] {
     const root: { [key: string]: any } = {};

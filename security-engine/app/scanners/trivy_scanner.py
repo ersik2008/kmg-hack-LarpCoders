@@ -102,7 +102,16 @@ async def run_trivy(repo_path: str) -> Dict[str, Any]:
                 "error": f"Unexpected Trivy report shape: {type(results).__name__}",
             }
 
+        from ..gitignore import GitIgnoreMatcher
+        matcher = GitIgnoreMatcher(repo_path)
+        if isinstance(results.get('Results'), list):
+            results['Results'] = [
+                res for res in results['Results']
+                if isinstance(res, dict) and not matcher.is_ignored(res.get('Target', ''))
+            ]
+
         return {"status": "COMPLETED", "data": results, "error": None}
+
 
     except Exception as e:
         return {"status": "FAILED", "data": {}, "error": f"Trivy execution error: {e}"}

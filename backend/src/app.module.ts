@@ -34,7 +34,7 @@ import { PromptInjectionGuard } from './common/middleware/prompt-injection.guard
       throttlers: [
         {
           ttl: 60000,
-          limit: 100,
+          limit: 600,
         },
       ],
     }),

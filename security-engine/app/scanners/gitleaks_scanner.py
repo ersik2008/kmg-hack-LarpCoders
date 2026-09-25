@@ -99,7 +99,15 @@ async def run_gitleaks(repo_path: str) -> Dict[str, Any]:
                 "error": f"Unexpected Gitleaks report shape: {type(results).__name__}",
             }
 
-        return {"status": "COMPLETED", "data": results, "error": None}
+        from ..gitignore import GitIgnoreMatcher
+        matcher = GitIgnoreMatcher(repo_path)
+        filtered_results = [
+            r for r in results
+            if isinstance(r, dict) and not matcher.is_ignored(r.get('File', ''))
+        ]
+
+        return {"status": "COMPLETED", "data": filtered_results, "error": None}
+
 
     except FileNotFoundError:
         return {"status": "FAILED", "data": [], "error": "Gitleaks CLI not found in system PATH"}

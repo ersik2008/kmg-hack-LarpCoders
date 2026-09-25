@@ -11,6 +11,7 @@ from .scanners.semgrep_scanner import run_semgrep
 from .scanners.gitleaks_scanner import run_gitleaks
 from .scanners.trivy_scanner import run_trivy
 from .scanners.normalizer import normalize_semgrep, normalize_gitleaks, normalize_trivy
+from .gitignore import GitIgnoreMatcher
 
 app = FastAPI(title="KMG Security Engine API")
 
@@ -74,11 +75,24 @@ class ScanRequest(BaseModel):
 
 
 def count_source_files(root: str) -> int:
+    matcher = GitIgnoreMatcher(root)
     total = 0
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in IGNORED_DIRS]
-        total += len(filenames)
+        rel_dir = os.path.relpath(dirpath, root).replace('\\', '/')
+        if rel_dir == '.':
+            rel_dir = ''
+
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in IGNORED_DIRS and not matcher.is_ignored(f"{rel_dir}/{d}" if rel_dir else d)
+        ]
+
+        for f in filenames:
+            rel_file = f"{rel_dir}/{f}" if rel_dir else f
+            if not matcher.is_ignored(rel_file):
+                total += 1
     return total
+
 
 
 def tool_available(name: str) -> bool:
