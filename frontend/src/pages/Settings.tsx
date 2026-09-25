@@ -128,10 +128,11 @@ const Settings = () => {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <SystemStatusCard status={status} onRefresh={loadStatus} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'stretch' }}>
+            <SystemStatusCard status={status} onRefresh={loadStatus} />
 
-          {policy && (
-            <>
+            {policy && (
+              <>
               <div className="card">
                 <h3 style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Shield size={20} /> Сканеры
@@ -221,8 +222,12 @@ const Settings = () => {
               </div>
 
               <PrePushGuardCard />
+              </>
+            )}
+          </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          {policy && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button
                   className="btn btn-primary"
                   onClick={save}
@@ -232,8 +237,7 @@ const Settings = () => {
                   {saved ? <Check size={18} /> : <Save size={18} />}
                   {saving ? 'Сохранение...' : saved ? 'Сохранено' : 'Сохранить'}
                 </button>
-              </div>
-            </>
+            </div>
           )}
         </div>
       )}
