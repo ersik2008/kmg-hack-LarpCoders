@@ -9,6 +9,7 @@ import { PolicyModule } from '../policy/policy.module.js';
 import { BuiltinScannerService } from './builtin-scanner.service.js';
 import { ArchitectureService } from './architecture.service.js';
 import { SarifService } from './sarif.service.js';
+import { MarkdownService } from './markdown.service.js';
 
 import { AiModule } from '../ai/ai.module.js';
 import { GithubModule } from '../github/github.module.js';
@@ -17,7 +18,7 @@ import { RequirementsModule } from '../requirements/requirements.module.js';
 @Module({
   imports: [RepositoryModule, AgentModule, HttpModule, PolicyModule, AiModule, GithubModule, RequirementsModule],
   controllers: [ScanController],
-  providers: [ScanService, BuiltinScannerService, ArchitectureService, SarifService],
-  exports: [ScanService, BuiltinScannerService, ArchitectureService, SarifService],
+  providers: [ScanService, BuiltinScannerService, ArchitectureService, SarifService, MarkdownService],
+  exports: [ScanService, BuiltinScannerService, ArchitectureService, SarifService, MarkdownService],
 })
 export class ScanModule {}

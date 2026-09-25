@@ -20,12 +20,13 @@ interface UploadResult {
 
 const SarifExport = ({ scanId, disabled }: { scanId?: string; disabled?: boolean }) => {
   const [downloading, setDownloading] = useState(false);
+  const [downloadingMd, setDownloadingMd] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
 
   const token = () => localStorage.getItem('kmg_token') || '';
 
-  const download = async () => {
+  const downloadSarif = async () => {
     if (!scanId) return;
     setDownloading(true);
     try {
@@ -50,6 +51,31 @@ const SarifExport = ({ scanId, disabled }: { scanId?: string; disabled?: boolean
     }
   };
 
+  const downloadMarkdown = async () => {
+    if (!scanId) return;
+    setDownloadingMd(true);
+    try {
+      const res = await fetch(`http://localhost:3000/api/scans/${scanId}/markdown`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `kmg-scan-${scanId}.md`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setResult({ uploaded: false, error: `Не удалось скачать Markdown: ${err.message}` });
+    } finally {
+      setDownloadingMd(false);
+    }
+  };
+
   const upload = async () => {
     if (!scanId) return;
     setUploading(true);
@@ -71,7 +97,17 @@ const SarifExport = ({ scanId, disabled }: { scanId?: string; disabled?: boolean
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
       <div style={{ display: 'flex', gap: '0.5rem' }}>
         <button
-          onClick={download}
+          onClick={downloadMarkdown}
+          disabled={disabled || downloadingMd}
+          className="btn btn-outline scan-refresh-btn"
+          title="Скачать отчёт в формате Markdown (ТЗ п. 4.6.1)"
+          style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+        >
+          {downloadingMd ? <Loader2 size={14} /> : <Download size={14} />} Markdown
+        </button>
+
+        <button
+          onClick={downloadSarif}
           disabled={disabled || downloading}
           className="btn btn-outline scan-refresh-btn"
           title="Скачать отчёт в формате SARIF 2.1.0"

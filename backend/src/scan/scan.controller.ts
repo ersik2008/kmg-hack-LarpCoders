@@ -1,13 +1,17 @@
 import { Controller, Post, Get, Param, Query, UseGuards, Req, Body, Res, Header } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ScanService } from './scan.service.js';
+import { MarkdownService } from './markdown.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { User } from '../generated/prisma/client.js';
 
 @Controller('scans')
 @UseGuards(JwtAuthGuard)
 export class ScanController {
-  constructor(private readonly scanService: ScanService) {}
+  constructor(
+    private readonly scanService: ScanService,
+    private readonly markdownService: MarkdownService
+  ) {}
 
   @Post()
   async startScan(
@@ -52,6 +56,16 @@ export class ScanController {
     const sarif = await this.scanService.buildSarif(user.id, id);
     res.setHeader('Content-Disposition', `attachment; filename="kmg-scan-${id}.sarif"`);
     return res.json(sarif);
+  }
+
+  /** Отчёт в формате Markdown, предназначенный для чтения специалистом (ТЗ п. 4.6.1). */
+  @Get(':id/markdown')
+  @Header('Content-Type', 'text/markdown')
+  async getMarkdown(@Req() req: Request, @Param('id') id: string, @Res() res: Response) {
+    const user = req.user as User;
+    const md = await this.markdownService.build(user.id, id);
+    res.setHeader('Content-Disposition', `attachment; filename="kmg-scan-${id}.md"`);
+    return res.send(md);
   }
 
   /** Выгрузка отчёта в GitHub Code Scanning (вкладка Security репозитория). */

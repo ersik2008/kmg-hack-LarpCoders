@@ -3,6 +3,7 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import SecurityControlsPanel from '../components/SecurityControlsPanel';
 import IBRequirementsPanel from '../components/IBRequirementsPanel';
 import MarkdownView from '../components/MarkdownView';
+import SarifExport from '../components/SarifExport';
 import { useScanEvents } from '../hooks/useScanEvents';
 import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -879,6 +880,8 @@ const ScanDetails = () => {
                 {riskScore}{isIncomplete ? '' : ' / 10'}
               </span>
             </div>
+
+            <SarifExport scanId={id} disabled={!isCompleted} />
 
             <button onClick={fetchScanData} className="btn btn-outline scan-refresh-btn" title="Обновить данные скана">
               <RefreshCw size={15} />
